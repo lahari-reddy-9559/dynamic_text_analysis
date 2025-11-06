@@ -170,7 +170,7 @@ clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric
 
 
 # --- Main Streamlit Interface ---
-st.title("Complete Text Analysis Dashboard 📊")
+st.title("Welcome to Text Analysis world 😶‍🌫️")
 st.info("Input text and click 'Run Full Analysis' for sentiment, summarization, and word cloud visualization.")
 
 # --- Input Area (Single Button & UI Structure) ---
@@ -281,3 +281,4 @@ if run:
             
         # Topic Modeling Insights (LDA) REMOVED
         st.markdown('</div>', unsafe_allow_html=True)
+
