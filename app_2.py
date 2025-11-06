@@ -38,7 +38,7 @@ MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
 # --- 1. Data Download, Preprocessing, and Model Training (SILENT) ---
-@st.cache_data
+@st.cache_data(show_spinner="Preparing data and models (This may take a moment)...")
 def load_and_preprocess_data():
     # ALL SETUP MESSAGES REMOVED
     try:
@@ -62,7 +62,7 @@ def load_and_preprocess_data():
         text = text.translate(str.maketrans('', '', string.punctuation))
         words = text.split()
         words = [word for word in words if word not in stop_words]
-        words = [lemmatizer.lemmatize(word) for word in words] # FIX: Corrected variable name to lemmatizer
+        words = [lemmatizer.lemmatize(word) for word in words]
         return ' '.join(words)
 
     df['cleaned_text'] = df['text'].apply(clean_text_local)
@@ -79,7 +79,7 @@ def load_and_preprocess_data():
 
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False) # Completely silent resource caching
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
     # ALL TRAINING MESSAGES REMOVED
     
@@ -100,7 +100,7 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
     
     return clf, _tfidf_vectorizer
 
-# --- 2. UI Helper Functions (analyze_sentiment_and_get_data and generate_wc_image unchanged) ---
+# --- 2. UI Helper Functions (unchanged) ---
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
@@ -132,15 +132,15 @@ def generate_wc_image(text):
 st.set_page_config(layout="wide", page_title="Text Analysis Dashboard")
 
 # --- Initial Setup Run (SILENT EXECUTION) ---
-# NOTE: The execution below is silent because st.text() calls were removed from the functions.
+# Added show_spinner to @st.cache_data to display a single, non-breaking message.
 df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
 
 if df is None:
     st.error("Setup failed: Could not load data. Check your Kaggle API setup or data file path.")
     st.stop()
 
+# Execution is silent due to show_spinner=False
 clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
-# --- END SILENT EXECUTION ---
 
 # --- Main Streamlit Interface ---
 st.title("Complete Text Analysis Dashboard 📊")
@@ -204,6 +204,7 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
         with col_abs:
             st.markdown("**Abstractive Summary**") 
             with st.spinner("Generating Abstractive Summary..."):
+                # Abstractive Error logic is handled inside summarization_utils.py
                 abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
                 st.info(abstractive_sum)
             
@@ -213,4 +214,4 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
             wc_image = generate_wc_image(input_text)
             st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
             
-        # Topic Modeling Insights (LDA) REMOVED
+        # Topic Modeling Insights (LDA) and ALL Step messages REMOVED
