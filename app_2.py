@@ -22,10 +22,8 @@ import tensorflow as tf
 
 # --- Import Utilities ---
 try:
-    # This line MUST be present for summarization to work
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
-    # This error is critical and the only text output allowed during setup failure
     st.error("Setup failed: Could not find summarization_utils.py. Please ensure it is in the same directory.")
     st.stop() 
 
@@ -42,18 +40,16 @@ RANDOM_STATE = 42
 # --- 1. Data Download, Preprocessing, and Model Training (SILENT) ---
 @st.cache_data
 def load_and_preprocess_data():
+    # ALL SETUP MESSAGES REMOVED
     try:
-        # Download dataset from Kaggle Hub
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
-        # Return None to trigger a visible error later
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
 
-    # NLTK Downloads Check (Silent)
     for package in ['punkt', 'stopwords', 'wordnet']:
         try: nltk.data.find(f'tokenizers/{package}' if package == 'punkt' else f'corpora/{package}')
         except LookupError: nltk.download(package, quiet=True)
@@ -66,17 +62,15 @@ def load_and_preprocess_data():
         text = text.translate(str.maketrans('', '', string.punctuation))
         words = text.split()
         words = [word for word in words if word not in stop_words]
-        words = [lemmatize(word) for word in words]
+        words = [lemmatizer.lemmatize(word) for word in words] # FIX: Corrected variable name to lemmatizer
         return ' '.join(words)
 
     df['cleaned_text'] = df['text'].apply(clean_text_local)
     
-    # TF-IDF Vectorization
     tfidf_vectorizer = TfidfVectorizer(max_features=MAX_FEATURES)
     tfidf_vectorizer.fit(df['cleaned_text'])
     tfidf_matrix = tfidf_vectorizer.transform(df['cleaned_text'])
     
-    # Split data
     X_train, X_test, y_train_str, y_test_str = train_test_split(
         tfidf_matrix, df['sentiment'], test_size=0.2, random_state=RANDOM_STATE, stratify=df['sentiment']
     )
@@ -86,14 +80,12 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-# FIX: Renamed _X_train, _y_train_numeric, and _tfidf_vectorizer for maximum cache reliability
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
-    # This function is completely silent
+    # ALL TRAINING MESSAGES REMOVED
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
     
-    # --- Train SGD Classifier ---
     clf = SGDClassifier(loss='log_loss', penalty='l2', random_state=RANDOM_STATE, learning_rate='adaptive', eta0=0.01)
     classes = np.unique(_y_train_numeric)
     
@@ -102,14 +94,13 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
         X_shuf, y_shuf = _X_train[perm], _y_train_numeric.iloc[perm]
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
-    # --- Save Artifacts ---
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
     joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
     
     return clf, _tfidf_vectorizer
 
-# --- 2. UI Helper Functions ---
+# --- 2. UI Helper Functions (analyze_sentiment_and_get_data and generate_wc_image unchanged) ---
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
@@ -140,15 +131,16 @@ def generate_wc_image(text):
 # --- 3. Streamlit Application Execution ---
 st.set_page_config(layout="wide", page_title="Text Analysis Dashboard")
 
-# --- Initial Setup Run (Silent) ---
+# --- Initial Setup Run (SILENT EXECUTION) ---
+# NOTE: The execution below is silent because st.text() calls were removed from the functions.
 df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
 
 if df is None:
     st.error("Setup failed: Could not load data. Check your Kaggle API setup or data file path.")
     st.stop()
 
-# Execute training and saving.
 clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+# --- END SILENT EXECUTION ---
 
 # --- Main Streamlit Interface ---
 st.title("Complete Text Analysis Dashboard 📊")
@@ -186,7 +178,7 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
             color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
             sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-            # Medium size fig, thinner bars (width=0.45)
+            # Medium size fig (6x4), thinner bars (width=0.45)
             fig, ax = plt.subplots(figsize=(6, 4)) 
             
             bars = ax.bar(
@@ -220,3 +212,5 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
         with st.spinner("Generating Word Cloud..."):
             wc_image = generate_wc_image(input_text)
             st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
+            
+        # Topic Modeling Insights (LDA) REMOVED
