@@ -84,7 +84,7 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-# FIX: Renamed _X_train and _tfidf_vectorizer to avoid hashing issues with sparse matrix and Scikit-learn object
+# FIX: Renamed _X_train and _tfidf_vectorizer to avoid UnhashableParamError
 def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
     st.text("Step 2/3: Training Models and Saving Artifacts...")
     
@@ -101,7 +101,7 @@ def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
         X_shuf, y_shuf = _X_train[perm], y_train_numeric.iloc[perm]
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
-    # --- Save Artifacts ---
+    # --- Save Artifacts (Use the underscore arguments for saving) ---
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
     joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
@@ -148,8 +148,8 @@ df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_tes
 if df is None:
     st.stop()
 
-# Execute training and saving. Note the arguments passed match the corrected function signature.
-clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer)
+# FIX APPLIED HERE: Arguments passed match the corrected function signature.
+clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
 
 # --- Main Streamlit Interface ---
 st.text("Step 3/3: Launching User Interface...")
