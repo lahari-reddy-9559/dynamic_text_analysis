@@ -182,7 +182,7 @@ else:
 
 
 # --- Main Streamlit Interface ---
-st.title("Complete Text Analysis Dashboard 📊")
+st.title("Welcomw to the world of Text by Lahari Reddy")
 st.info("Input text and click 'Run Full Analysis' for sentiment, summarization, and word cloud visualization.")
 
 # --- Input Area (Single Button & UI Structure) ---
@@ -293,3 +293,4 @@ if run:
             
         # Topic Modeling Insights (LDA) REMOVED
         st.markdown('</div>', unsafe_allow_html=True)
+
