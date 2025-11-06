@@ -15,12 +15,13 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier # CHANGED MODEL
 from wordcloud import WordCloud
 import tensorflow as tf
 
 # --- Import Summarization Utilities (Requires summarization_utils.py) ---
 try:
+    # Ensure all necessary utility functions are imported
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
     st.error("Setup failed: Could not find summarization_utils.py. Please ensure it is in the same directory.")
@@ -82,21 +83,20 @@ def load_and_preprocess_data():
 
 @st.cache_resource(show_spinner=False)
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
-    # Trains the SGDClassifier model
+    # Trains the RandomForestClassifier model (NEW MODEL)
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
     
-    clf = SGDClassifier(loss='log_loss', penalty='l2', random_state=RANDOM_STATE, learning_rate='adaptive', eta0=0.01)
-    classes = np.unique(_y_train_numeric)
+    # Initialize and train RandomForestClassifier
+    clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
     
-    for epoch in range(50):
-        perm = np.random.permutation(_X_train.shape[0])
-        X_shuf, y_shuf = _X_train[perm], _y_train_numeric.iloc[perm]
-        clf.partial_fit(X_shuf, y_shuf, classes=classes)
-        
+    # RandomForestClassifier requires dense input for training
+    X_train_dense = _X_train.toarray()
+    clf.fit(X_train_dense, _y_train_numeric)
+    
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
-    joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
+    joblib.dump(clf, os.path.join(MODEL_DIR, 'random_forest_sentiment_classifier.pkl')) # Updated artifact name
     
     return clf, _tfidf_vectorizer
 
@@ -104,13 +104,18 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
-    probabilities = classifier.predict_proba(text_vec)[0]
-
+    
+    # RandomForestClassifier requires dense input for prediction
+    text_vec_dense = text_vec.toarray()
+    
+    probabilities = classifier.predict_proba(text_vec_dense)[0]
+    
+    # RandomForestClassifier classes might not be sorted 0, 1, 2, so we rely on classifier.classes_
     sentiment_data = {}
     for i, label_id in enumerate(classifier.classes_):
         label_name = reverse_sentiment_mapping.get(label_id, f'Unknown_{label_id}')
         sentiment_data[label_name] = float(probabilities[i])
-
+        
     top_sentiment_label = reverse_sentiment_mapping.get(classifier.classes_[np.argmax(probabilities)])
     
     return sentiment_data, top_sentiment_label
@@ -160,17 +165,24 @@ st.markdown(
 
 
 # --- Initial Backend Setup (Silent) ---
-df, tfidf_vectorizer_init, X_train, y_train_numeric, _, _, _ = load_and_preprocess_data()
+# Use st.session_state to hold the model and vectorizer for persistence
+if 'clf' not in st.session_state or 'tfidf_vectorizer' not in st.session_state:
+    df, tfidf_vectorizer_init, X_train, y_train_numeric, _, _, _ = load_and_preprocess_data()
 
-if df is None:
-    st.error("Setup failed: Could not load ML data. Check your Kaggle API setup or data file path.")
-    st.stop()
+    if df is None:
+        st.error("Setup failed: Could not load ML data. Check your Kaggle API setup or data file path.")
+        st.stop()
 
-clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+    clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+    st.session_state.clf = clf
+    st.session_state.tfidf_vectorizer = tfidf_vectorizer
+else:
+    clf = st.session_state.clf
+    tfidf_vectorizer = st.session_state.tfidf_vectorizer
 
 
 # --- Main Streamlit Interface ---
-st.title("Welcome to Text Analysis world 😶‍🌫️")
+st.title("Complete Text Analysis Dashboard 📊")
 st.info("Input text and click 'Run Full Analysis' for sentiment, summarization, and word cloud visualization.")
 
 # --- Input Area (Single Button & UI Structure) ---
@@ -224,7 +236,7 @@ if run:
             
             st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
             
-            # Bar Chart Styling (Medium size, Thinner bars)
+            # Bar Chart Styling 
             sentiment_df = pd.DataFrame({
                 'Sentiment': list(sentiment_probs.keys()),
                 'Probability': list(sentiment_probs.values())
@@ -232,7 +244,7 @@ if run:
             color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
             sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-            fig, ax = plt.subplots(figsize=(6, 4)) # Medium Size
+            fig, ax = plt.subplots(figsize=(5, 3)) # SMALLER SIZE (5x3)
             
             bars = ax.bar(
                 sentiment_df['Sentiment'], 
@@ -265,7 +277,7 @@ if run:
                 except Exception as e:
                     error_text = str(e)
                     
-                    # --- GUARANTEED ERROR MESSAGE ---
+                    # GUARANTEED ERROR MESSAGE
                     if "Keras 3" in error_text or "tf-keras" in error_text or "No module named 'tf_keras'" in error_text:
                         st.error("Abstractive model failed: Dependency error detected. Run pip install tf-keras to resolve the Keras 3/Transformers compatibility issue.")
                     else:
@@ -281,4 +293,3 @@ if run:
             
         # Topic Modeling Insights (LDA) REMOVED
         st.markdown('</div>', unsafe_allow_html=True)
-
