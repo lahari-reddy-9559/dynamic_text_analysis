@@ -23,6 +23,7 @@ except ImportError:
     torch = None
 
 # --- Text Preprocessing Setup ---
+# Ensure NLTK data is available (often done in app.py for Streamlit, but repeated here for utility file independence)
 if nltk:
     try:
         nltk.data.find('corpora/stopwords')
@@ -135,4 +136,8 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small",
             return out[0].get("summary_text", "").strip()
         return str(out)
     except Exception as e:
-        return f"Abstractive model failed: {e}"
+        error_msg = str(e)
+        # Check for known Keras/TensorFlow compatibility errors
+        if "Keras 3" in error_msg or "cannot pickle 'function'" in error_msg:
+             return "Abstractive model failed: Dependency error detected. Run `pip install tf-keras` to resolve the Keras 3/Transformers compatibility issue."
+        return f"Abstractive model failed: {error_msg}"
