@@ -115,7 +115,7 @@ def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     
     return sentiment_data, top_sentiment_label
 
-# --- 4. Word Cloud Function (Same as previous ML backend code) ---
+# --- 4. Word Cloud Function ---
 def generate_wc_image(text):
     cleaned_text = clean_text_util(text)
     if not cleaned_text:
@@ -133,7 +133,7 @@ def generate_wc_image(text):
 # --- 5. Streamlit Application Execution (UI Focus) ---
 st.set_page_config(layout="centered", page_title="Text Analysis Dashboard")
 
-# --- UI Styling (From your last provided code) ---
+# --- UI Styling (For clean results box and primary button) ---
 st.markdown(
     """
     <style>
@@ -173,7 +173,7 @@ clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric
 st.title("Complete Text Analysis Dashboard 📊")
 st.info("Input text and click 'Run Full Analysis' for sentiment, summarization, and word cloud visualization.")
 
-# --- Input Area (Adapted from your last UI structure) ---
+# --- Input Area (Single Button & UI Structure) ---
 with st.form(key='analysis_form'):
     st.header("1. Text Input")
 
@@ -201,7 +201,7 @@ with st.form(key='analysis_form'):
             except Exception as e:
                 st.error(f"File Read Error: {e}")
         
-    # ONLY ONE BUTTON (As requested)
+    # ONLY ONE BUTTON
     run = st.form_submit_button("Run Full Analysis", type="primary", use_container_width=True)
 
 # --- RESULTS DISPLAY ---
@@ -216,7 +216,7 @@ if run:
         st.markdown('<div class="result-box">', unsafe_allow_html=True)
 
         
-        # --- Sentiment Analysis (Uses ML Model) ---
+        # --- Sentiment Analysis (ML Model + Custom Bar Styling) ---
         st.subheader("Sentiment Analysis") 
         
         with st.spinner("Running Inference on Trained Model..."):
@@ -224,7 +224,7 @@ if run:
             
             st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
             
-            # Bar Chart Styling (Medium size, Thinner bars - as requested)
+            # Bar Chart Styling (Medium size, Thinner bars)
             sentiment_df = pd.DataFrame({
                 'Sentiment': list(sentiment_probs.keys()),
                 'Probability': list(sentiment_probs.values())
@@ -259,15 +259,15 @@ if run:
         with col_abs:
             st.markdown("##### 🧠 Abstractive Summary (AI Paraphrase)") # No model name
             with st.spinner("Generating Abstractive Summary..."):
-                # Abstractive Error logic is handled inside summarization_utils.py
                 try:
                     abstractive_sum = abstractive_summarize_text(text_input, model_name="t5-small")
                     st.info(abstractive_sum)
                 except Exception as e:
-                    # Capture the specific Keras error message defined in the utils file
                     error_text = str(e)
-                    if "Keras 3" in error_text or "tf-keras" in error_text:
-                        st.error("Abstractive model failed: Your currently installed version of Keras is Keras 3, but this is not yet supported in Transformers. Please install the backwards-compatible tf-keras package with pip install tf-keras.")
+                    
+                    # --- GUARANTEED ERROR MESSAGE ---
+                    if "Keras 3" in error_text or "tf-keras" in error_text or "No module named 'tf_keras'" in error_text:
+                        st.error("Abstractive model failed: Dependency error detected. Run pip install tf-keras to resolve the Keras 3/Transformers compatibility issue.")
                     else:
                         st.error(f"Abstractive model failed: {error_text}")
 
