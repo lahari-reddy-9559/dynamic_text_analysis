@@ -25,8 +25,9 @@ try:
     # This line MUST be present for summarization to work
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
-    st.error("Could not find summarization_utils.py. Please ensure it is in the same directory.")
-    st.stop() # Stop execution if utils file is missing
+    # This error is critical and the only text output allowed during setup failure
+    st.error("Setup failed: Could not find summarization_utils.py. Please ensure it is in the same directory.")
+    st.stop() 
 
 warnings.filterwarnings("ignore")
 tf.get_logger().setLevel('ERROR')
@@ -38,7 +39,7 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- 1. Data Download, Preprocessing, and Model Training (Hidden) ---
+# --- 1. Data Download, Preprocessing, and Model Training (SILENT) ---
 @st.cache_data
 def load_and_preprocess_data():
     try:
@@ -47,11 +48,12 @@ def load_and_preprocess_data():
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
+        # Return None to trigger a visible error later
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
 
-    # NLTK Downloads Check
+    # NLTK Downloads Check (Silent)
     for package in ['punkt', 'stopwords', 'wordnet']:
         try: nltk.data.find(f'tokenizers/{package}' if package == 'punkt' else f'corpora/{package}')
         except LookupError: nltk.download(package, quiet=True)
@@ -64,7 +66,7 @@ def load_and_preprocess_data():
         text = text.translate(str.maketrans('', '', string.punctuation))
         words = text.split()
         words = [word for word in words if word not in stop_words]
-        words = [lemmatizer.lemmatize(word) for word in words]
+        words = [lemmatize(word) for word in words]
         return ' '.join(words)
 
     df['cleaned_text'] = df['text'].apply(clean_text_local)
@@ -84,7 +86,8 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
+# FIX: Renamed _X_train, _y_train_numeric, and _tfidf_vectorizer for maximum cache reliability
+def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
     # This function is completely silent
     
     if not os.path.exists(MODEL_DIR):
@@ -92,11 +95,11 @@ def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
     
     # --- Train SGD Classifier ---
     clf = SGDClassifier(loss='log_loss', penalty='l2', random_state=RANDOM_STATE, learning_rate='adaptive', eta0=0.01)
-    classes = np.unique(y_train_numeric)
+    classes = np.unique(_y_train_numeric)
     
     for epoch in range(50):
         perm = np.random.permutation(_X_train.shape[0])
-        X_shuf, y_shuf = _X_train[perm], y_train_numeric.iloc[perm]
+        X_shuf, y_shuf = _X_train[perm], _y_train_numeric.iloc[perm]
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
     # --- Save Artifacts ---
@@ -106,7 +109,7 @@ def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
     
     return clf, _tfidf_vectorizer
 
-# --- 2. UI Helper Functions (analyze_sentiment_and_get_data and generate_wc_image unchanged) ---
+# --- 2. UI Helper Functions ---
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
@@ -135,7 +138,7 @@ def generate_wc_image(text):
     return Image.open(img_io)
 
 # --- 3. Streamlit Application Execution ---
-st.set_page_config(layout="wide", page_title="Sentiment & Analysis Pipeline")
+st.set_page_config(layout="wide", page_title="Text Analysis Dashboard")
 
 # --- Initial Setup Run (Silent) ---
 df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
@@ -145,7 +148,7 @@ if df is None:
     st.stop()
 
 # Execute training and saving.
-clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
 
 # --- Main Streamlit Interface ---
 st.title("Complete Text Analysis Dashboard 📊")
@@ -201,4 +204,19 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
         col_ext, col_abs = st.columns(2)
         
         with col_ext:
-            st.
+            st.markdown("**Extractive Summary**")
+            with st.spinner("Generating Extractive Summary..."):
+                extractive_sum = extractive_reduce(input_text)
+                st.info(extractive_sum)
+
+        with col_abs:
+            st.markdown("**Abstractive Summary**") 
+            with st.spinner("Generating Abstractive Summary..."):
+                abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
+                st.info(abstractive_sum)
+            
+        # --- Word Cloud ---
+        st.subheader("Word Cloud Visualization")
+        with st.spinner("Generating Word Cloud..."):
+            wc_image = generate_wc_image(input_text)
+            st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
