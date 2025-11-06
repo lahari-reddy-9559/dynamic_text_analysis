@@ -12,14 +12,13 @@ import math
 from PIL import Image
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
-import tensorflow as tf # Keep import for dependency list completeness
+import tensorflow as tf
 
 # --- Import Utilities ---
 try:
@@ -40,14 +39,13 @@ RANDOM_STATE = 42
 # --- 1. Data Download, Preprocessing, and Model Training ---
 @st.cache_data
 def load_and_preprocess_data():
-    st.text("Step 1/3: Downloading Data and Setting up NLTK...")
+    # Hide all setup output (No st.text/st.write here)
     try:
         # Download dataset from Kaggle Hub
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
-        st.error(f"Data download failed. Ensure Kaggle API credentials are set up. Error: {e}")
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
@@ -86,7 +84,7 @@ def load_and_preprocess_data():
 @st.cache_resource
 # FIX: Renamed _X_train and _tfidf_vectorizer to avoid UnhashableParamError
 def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
-    st.text("Step 2/3: Training Models and Saving Artifacts...")
+    # Hide all setup output (No st.text/st.success here)
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
@@ -101,17 +99,14 @@ def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
         X_shuf, y_shuf = _X_train[perm], y_train_numeric.iloc[perm]
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
-    # --- Save Artifacts (Use the underscore arguments for saving) ---
+    # --- Save Artifacts ---
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
     joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
     
-    st.success("Models trained and saved to 'models/'.")
-    
     return clf, _tfidf_vectorizer
 
-# --- 2. UI Helper Functions ---
-
+# --- 2. UI Helper Functions (analyze_sentiment_and_get_data and generate_wc_image unchanged) ---
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
@@ -142,17 +137,16 @@ def generate_wc_image(text):
 # --- 3. Streamlit Application Execution ---
 st.set_page_config(layout="wide", page_title="Full Deployment Pipeline")
 
-# --- Initial Setup Run ---
+# --- Initial Setup Run (Hidden from user) ---
 df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
 
 if df is None:
+    st.error("Setup failed due to data loading error. Please check your Kaggle API setup or ensure the dataset is accessible.")
     st.stop()
 
-# FIX APPLIED HERE: Arguments passed match the corrected function signature.
+# Execute training and saving.
 clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
 
-# --- Main Streamlit Interface ---
-st.text("Step 3/3: Launching User Interface...")
 st.title("Complete Sentiment Analysis Dashboard 📊")
 
 # --- Input Area ---
@@ -165,59 +159,62 @@ if uploaded_file is not None:
     input_text = file_contents
     st.info(f"File '{uploaded_file.name}' loaded.")
 
-if st.button("Run Full Analysis", type="primary", use_container_width=True) and input_text:
-    
-    st.header("--- Analysis Results ---")
-    
-    # --- Sentiment Analysis ---
-    st.subheader("1. Sentiment Analysis (SGD Classifier)")
-    
-    with st.spinner("Running Inference..."):
-        sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(input_text, tfidf_vectorizer, clf)
+# --- Single Button Logic ---
+if st.button("Run Full Analysis", type="primary", use_container_width=True):
+    if not input_text:
+        st.error("Please provide text or upload a file to analyze.")
+    else:
+        st.header("--- Analysis Results ---")
         
-        st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
+        # --- Sentiment Analysis ---
+        st.subheader("Sentiment Analysis") # No model name
         
-        # Bar Chart
-        sentiment_df = pd.DataFrame({
-            'Sentiment': list(sentiment_probs.keys()),
-            'Probability': list(sentiment_probs.values())
-        })
-        color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
-        sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
-
-        fig, ax = plt.subplots(figsize=(8, 5))
-        sns.barplot(x='Sentiment', y='Probability', data=sentiment_df, palette=sentiment_df['Color'].tolist(), ax=ax)
-        ax.set_title('Sentiment Probability Distribution')
-        ax.set_ylim(0, 1.05)
-        st.pyplot(fig)
-
-    # --- Summarization ---
-    st.subheader("2. Text Summarization")
-    col_ext, col_abs = st.columns(2)
-    
-    with col_ext:
-        st.markdown("**Extractive Summary**")
-        with st.spinner("Generating Extractive Summary..."):
-            extractive_sum = extractive_reduce(input_text)
-            st.info(extractive_sum)
-
-    with col_abs:
-        st.markdown("**Abstractive Summary (T5-Small)**")
-        with st.spinner("Generating Abstractive Summary..."):
-            abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
-            st.info(abstractive_sum)
+        with st.spinner("Running Inference..."):
+            sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(input_text, tfidf_vectorizer, clf)
             
-    # --- Word Cloud ---
-    st.subheader("3. Word Cloud Visualization")
-    with st.spinner("Generating Word Cloud..."):
-        wc_image = generate_wc_image(input_text)
-        st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
+            st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
+            
+            # Bar Chart Styling (Medium size, less bar width)
+            sentiment_df = pd.DataFrame({
+                'Sentiment': list(sentiment_probs.keys()),
+                'Probability': list(sentiment_probs.values())
+            })
+            color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
+            sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-    # --- Topic Modeling Placeholder ---
-    st.subheader("4. Topic Modeling Insights (LDA)")
-    st.warning("""
-    Topic-level visualization is disabled because the LDA model and related data were not explicitly trained/saved in this consolidated script.
-    """)
+            fig, ax = plt.subplots(figsize=(6, 4)) # Medium Size
+            
+            # Using plt.bar for explicit width control (thinner bars)
+            bars = ax.bar(
+                sentiment_df['Sentiment'], 
+                sentiment_df['Probability'], 
+                color=sentiment_df['Color'].tolist(),
+                width=0.45  # Controlled bar width
+            )
+            ax.set_title('Sentiment Probability Distribution')
+            ax.set_ylim(0, 1.05)
+            st.pyplot(fig)
 
-elif st.button("Run Full Analysis", use_container_width=True) and not input_text:
-    st.error("Please provide text or upload a file to analyze.")
+        # --- Summarization ---
+        st.subheader("Text Summarization")
+        col_ext, col_abs = st.columns(2)
+        
+        with col_ext:
+            st.markdown("**Extractive Summary**")
+            with st.spinner("Generating Extractive Summary..."):
+                extractive_sum = extractive_reduce(input_text)
+                st.info(extractive_sum)
+
+        with col_abs:
+            st.markdown("**Abstractive Summary**") # No model name
+            with st.spinner("Generating Abstractive Summary..."):
+                abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
+                st.info(abstractive_sum)
+            
+        # --- Word Cloud ---
+        st.subheader("Word Cloud Visualization")
+        with st.spinner("Generating Word Cloud..."):
+            wc_image = generate_wc_image(input_text)
+            st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
+
+        # REMOVED Topic Modeling Insights (LDA) section
