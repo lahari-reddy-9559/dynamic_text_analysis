@@ -19,17 +19,15 @@ from sklearn.linear_model import SGDClassifier
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tensorflow.keras.optimizers import Adam # Kept for dependency completeness
+import tensorflow as tf # Keep import for dependency list completeness
 
-# --- Import Summarization Utilities ---
+# --- Import Utilities ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
     st.error("Could not find summarization_utils.py. Please ensure it is in the same directory.")
 
 warnings.filterwarnings("ignore")
-# Suppress TensorFlow warnings
-import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
 
 # --- Configuration ---
@@ -49,7 +47,7 @@ def load_and_preprocess_data():
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
-        st.error(f"Data download failed. Ensure Kaggle API credentials are set up or the path is correct. Error: {e}")
+        st.error(f"Data download failed. Ensure Kaggle API credentials are set up. Error: {e}")
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
@@ -86,7 +84,8 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-def train_and_save_models(_X_train, y_train_numeric, tfidf_vectorizer):
+# FIX: Renamed _X_train and _tfidf_vectorizer to avoid hashing issues with sparse matrix and Scikit-learn object
+def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
     st.text("Step 2/3: Training Models and Saving Artifacts...")
     
     if not os.path.exists(MODEL_DIR):
@@ -103,13 +102,13 @@ def train_and_save_models(_X_train, y_train_numeric, tfidf_vectorizer):
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
     # --- Save Artifacts ---
-    joblib.dump(tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
+    joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
     joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
     
     st.success("Models trained and saved to 'models/'.")
     
-    return clf, tfidf_vectorizer
+    return clf, _tfidf_vectorizer
 
 # --- 2. UI Helper Functions ---
 
@@ -144,14 +143,13 @@ def generate_wc_image(text):
 st.set_page_config(layout="wide", page_title="Full Deployment Pipeline")
 
 # --- Initial Setup Run ---
-df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
+df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
 
-if df is None or tfidf_vectorizer is None:
-    st.error("Setup failed due to data loading error. Check Kaggle API setup.")
+if df is None:
     st.stop()
 
-# FIX APPLIED HERE: X_train renamed to _X_train to avoid UnhashableParamError
-clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, tfidf_vectorizer=tfidf_vectorizer)
+# Execute training and saving. Note the arguments passed match the corrected function signature.
+clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer)
 
 # --- Main Streamlit Interface ---
 st.text("Step 3/3: Launching User Interface...")
@@ -218,8 +216,7 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True) and 
     # --- Topic Modeling Placeholder ---
     st.subheader("4. Topic Modeling Insights (LDA)")
     st.warning("""
-    Topic-level visualization is disabled because the LDA model and the topic aggregation table 
-    (`lda_topic_sentiment_summary.csv`) were not explicitly saved and loaded in this consolidated script.
+    Topic-level visualization is disabled because the LDA model and related data were not explicitly trained/saved in this consolidated script.
     """)
 
 elif st.button("Run Full Analysis", use_container_width=True) and not input_text:
