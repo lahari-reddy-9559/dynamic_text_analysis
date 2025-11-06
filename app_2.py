@@ -9,6 +9,7 @@ import numpy as np
 import io
 import streamlit as st
 import math
+import matplotlib.pyplot as plt
 from PIL import Image
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
@@ -16,11 +17,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import SGDClassifier
 from wordcloud import WordCloud
-import matplotlib.pyplot as plt
-import seaborn as sns
 import tensorflow as tf
 
-# --- Import Utilities ---
+# --- Import Summarization Utilities (Requires summarization_utils.py) ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
@@ -30,17 +29,18 @@ except ImportError:
 warnings.filterwarnings("ignore")
 tf.get_logger().setLevel('ERROR')
 
-# --- Configuration ---
+# --- Configuration for ML Backend ---
 MODEL_DIR = 'models'
 sentiment_mapping = {'negative': 0, 'neutral': 1, 'positive': 2}
 reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- 1. Data Download, Preprocessing, and Model Training (SILENT) ---
+# --- 2. ML Backend Functions (SILENT EXECUTION) ---
+
 @st.cache_data(show_spinner="Preparing data and models (This may take a moment)...")
 def load_and_preprocess_data():
-    # ALL SETUP MESSAGES REMOVED
+    # Uses Kaggle Data, TF-IDF, and Lemmatization
     try:
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
         file_path = os.path.join(path, 'train.csv')
@@ -58,6 +58,7 @@ def load_and_preprocess_data():
     stop_words = set(stopwords.words('english'))
 
     def clean_text_local(text):
+        if not isinstance(text, str): return ""
         text = text.lower()
         text = text.translate(str.maketrans('', '', string.punctuation))
         words = text.split()
@@ -79,9 +80,9 @@ def load_and_preprocess_data():
 
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
-@st.cache_resource(show_spinner=False) # Completely silent resource caching
+@st.cache_resource(show_spinner=False)
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
-    # ALL TRAINING MESSAGES REMOVED
+    # Trains the SGDClassifier model
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
@@ -96,11 +97,10 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
         
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
-    joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
     
     return clf, _tfidf_vectorizer
 
-# --- 2. UI Helper Functions (unchanged) ---
+# --- 3. Sentiment Prediction Function (Using ML Model) ---
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
@@ -115,6 +115,7 @@ def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     
     return sentiment_data, top_sentiment_label
 
+# --- 4. Word Cloud Function (Same as previous ML backend code) ---
 def generate_wc_image(text):
     cleaned_text = clean_text_util(text)
     if not cleaned_text:
@@ -128,49 +129,102 @@ def generate_wc_image(text):
     img_io.seek(0)
     return Image.open(img_io)
 
-# --- 3. Streamlit Application Execution ---
-st.set_page_config(layout="wide", page_title="Text Analysis Dashboard")
 
-# --- Initial Setup Run (SILENT EXECUTION) ---
-# Added show_spinner to @st.cache_data to display a single, non-breaking message.
-df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
+# --- 5. Streamlit Application Execution (UI Focus) ---
+st.set_page_config(layout="centered", page_title="Text Analysis Dashboard")
+
+# --- UI Styling (From your last provided code) ---
+st.markdown(
+    """
+    <style>
+    .result-box { 
+        padding: 18px; 
+        border-radius: 6px; 
+        background: var(--secondary-background-color); 
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+        margin-bottom: 20px;
+        border: 1px solid var(--primary-color);
+    }
+    .stButton>button {
+        background-color: var(--primary-color); 
+        color: white; 
+        font-weight: bold;
+        border-radius: 4px;
+        border: none;
+        padding: 10px 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
+
+
+# --- Initial Backend Setup (Silent) ---
+df, tfidf_vectorizer_init, X_train, y_train_numeric, _, _, _ = load_and_preprocess_data()
 
 if df is None:
-    st.error("Setup failed: Could not load data. Check your Kaggle API setup or data file path.")
+    st.error("Setup failed: Could not load ML data. Check your Kaggle API setup or data file path.")
     st.stop()
 
-# Execution is silent due to show_spinner=False
 clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+
 
 # --- Main Streamlit Interface ---
 st.title("Complete Text Analysis Dashboard 📊")
+st.info("Input text and click 'Run Full Analysis' for sentiment, summarization, and word cloud visualization.")
 
-# --- Input Area ---
-st.header("Text Input")
-input_text = st.text_area("Paste Text Here:", height=200, key="text_input")
-uploaded_file = st.file_uploader("Or Upload Text File (.txt):", type=['txt'])
+# --- Input Area (Adapted from your last UI structure) ---
+with st.form(key='analysis_form'):
+    st.header("1. Text Input")
 
-if uploaded_file is not None:
-    file_contents = uploaded_file.read().decode("utf-8")
-    input_text = file_contents
-    st.info(f"File '{uploaded_file.name}' loaded.")
+    col_a, col_b = st.columns([3,1])
+    
+    if 'default_text_input' not in st.session_state: st.session_state.default_text_input = ""
 
-# --- Single Button Logic ---
-if st.button("Run Full Analysis", type="primary", use_container_width=True):
-    if not input_text:
-        st.error("Please provide text or upload a file to analyze.")
-    else:
-        st.header("--- Analysis Results ---")
+    with col_a:
+        text_input = st.text_area(
+            "Paste Text Here:", 
+            height=260, 
+            placeholder="Enter the text you wish to analyze...",
+            value=st.session_state.default_text_input
+        )
+
+    with col_b:
+        uploaded = st.file_uploader("Or Upload File (.txt):", type=["txt"])
         
-        # --- Sentiment Analysis ---
+        if uploaded is not None:
+            try:
+                file_text = uploaded.read().decode("utf-8", errors='ignore')
+                text_input = file_text
+                st.session_state.default_text_input = file_text
+                st.toast("File loaded. Ready to analyze.", icon='📄')
+            except Exception as e:
+                st.error(f"File Read Error: {e}")
+        
+    # ONLY ONE BUTTON (As requested)
+    run = st.form_submit_button("Run Full Analysis", type="primary", use_container_width=True)
+
+# --- RESULTS DISPLAY ---
+if run:
+    if not text_input or not text_input.strip():
+        st.error("🚨 Please provide text to analyze.")
+    else:
+        st.session_state.default_text_input = text_input 
+        
+        st.markdown("---")
+        st.header("2. Analysis Results")
+        st.markdown('<div class="result-box">', unsafe_allow_html=True)
+
+        
+        # --- Sentiment Analysis (Uses ML Model) ---
         st.subheader("Sentiment Analysis") 
         
-        with st.spinner("Running Inference..."):
-            sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(input_text, tfidf_vectorizer, clf)
+        with st.spinner("Running Inference on Trained Model..."):
+            sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(text_input, tfidf_vectorizer, clf)
             
             st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
             
-            # Bar Chart Styling (Medium size, Thinner bars)
+            # Bar Chart Styling (Medium size, Thinner bars - as requested)
             sentiment_df = pd.DataFrame({
                 'Sentiment': list(sentiment_probs.keys()),
                 'Probability': list(sentiment_probs.values())
@@ -178,40 +232,52 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
             color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
             sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-            # Medium size fig (6x4), thinner bars (width=0.45)
-            fig, ax = plt.subplots(figsize=(6, 4)) 
+            fig, ax = plt.subplots(figsize=(6, 4)) # Medium Size
             
             bars = ax.bar(
                 sentiment_df['Sentiment'], 
                 sentiment_df['Probability'], 
                 color=sentiment_df['Color'].tolist(),
-                width=0.45  
+                width=0.45  # Controlled bar width
             )
             ax.set_title('Sentiment Probability Distribution')
             ax.set_ylim(0, 1.05)
             st.pyplot(fig)
 
+
         # --- Summarization ---
+        st.markdown("---")
         st.subheader("Text Summarization")
         col_ext, col_abs = st.columns(2)
         
         with col_ext:
-            st.markdown("**Extractive Summary**")
+            st.markdown("##### ✂️ Extractive Summary (Key Sentences)")
             with st.spinner("Generating Extractive Summary..."):
-                extractive_sum = extractive_reduce(input_text)
+                extractive_sum = extractive_reduce(text_input)
                 st.info(extractive_sum)
 
         with col_abs:
-            st.markdown("**Abstractive Summary**") 
+            st.markdown("##### 🧠 Abstractive Summary (AI Paraphrase)") # No model name
             with st.spinner("Generating Abstractive Summary..."):
                 # Abstractive Error logic is handled inside summarization_utils.py
-                abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
-                st.info(abstractive_sum)
+                try:
+                    abstractive_sum = abstractive_summarize_text(text_input, model_name="t5-small")
+                    st.info(abstractive_sum)
+                except Exception as e:
+                    # Capture the specific Keras error message defined in the utils file
+                    error_text = str(e)
+                    if "Keras 3" in error_text or "tf-keras" in error_text:
+                        st.error("Abstractive model failed: Your currently installed version of Keras is Keras 3, but this is not yet supported in Transformers. Please install the backwards-compatible tf-keras package with pip install tf-keras.")
+                    else:
+                        st.error(f"Abstractive model failed: {error_text}")
+
             
         # --- Word Cloud ---
+        st.markdown("---")
         st.subheader("Word Cloud Visualization")
         with st.spinner("Generating Word Cloud..."):
-            wc_image = generate_wc_image(input_text)
+            wc_image = generate_wc_image(text_input)
             st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
             
-        # Topic Modeling Insights (LDA) and ALL Step messages REMOVED
+        # Topic Modeling Insights (LDA) REMOVED
+        st.markdown('</div>', unsafe_allow_html=True)
