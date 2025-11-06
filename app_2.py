@@ -22,9 +22,11 @@ import tensorflow as tf
 
 # --- Import Utilities ---
 try:
+    # This line MUST be present for summarization to work
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
     st.error("Could not find summarization_utils.py. Please ensure it is in the same directory.")
+    st.stop() # Stop execution if utils file is missing
 
 warnings.filterwarnings("ignore")
 tf.get_logger().setLevel('ERROR')
@@ -36,10 +38,9 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- 1. Data Download, Preprocessing, and Model Training ---
+# --- 1. Data Download, Preprocessing, and Model Training (Hidden) ---
 @st.cache_data
 def load_and_preprocess_data():
-    # Hide all setup output (No st.text/st.write here)
     try:
         # Download dataset from Kaggle Hub
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
@@ -70,7 +71,8 @@ def load_and_preprocess_data():
     
     # TF-IDF Vectorization
     tfidf_vectorizer = TfidfVectorizer(max_features=MAX_FEATURES)
-    tfidf_matrix = tfidf_vectorizer.fit_transform(df['cleaned_text'])
+    tfidf_vectorizer.fit(df['cleaned_text'])
+    tfidf_matrix = tfidf_vectorizer.transform(df['cleaned_text'])
     
     # Split data
     X_train, X_test, y_train_str, y_test_str = train_test_split(
@@ -82,9 +84,8 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-# FIX: Renamed _X_train and _tfidf_vectorizer to avoid UnhashableParamError
 def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
-    # Hide all setup output (No st.text/st.success here)
+    # This function is completely silent
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
@@ -93,7 +94,6 @@ def train_and_save_models(_X_train, y_train_numeric, _tfidf_vectorizer):
     clf = SGDClassifier(loss='log_loss', penalty='l2', random_state=RANDOM_STATE, learning_rate='adaptive', eta0=0.01)
     classes = np.unique(y_train_numeric)
     
-    # Epoch training loop
     for epoch in range(50):
         perm = np.random.permutation(_X_train.shape[0])
         X_shuf, y_shuf = _X_train[perm], y_train_numeric.iloc[perm]
@@ -135,19 +135,20 @@ def generate_wc_image(text):
     return Image.open(img_io)
 
 # --- 3. Streamlit Application Execution ---
-st.set_page_config(layout="wide", page_title="Full Deployment Pipeline")
+st.set_page_config(layout="wide", page_title="Sentiment & Analysis Pipeline")
 
-# --- Initial Setup Run (Hidden from user) ---
+# --- Initial Setup Run (Silent) ---
 df, tfidf_vectorizer_init, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str = load_and_preprocess_data()
 
 if df is None:
-    st.error("Setup failed due to data loading error. Please check your Kaggle API setup or ensure the dataset is accessible.")
+    st.error("Setup failed: Could not load data. Check your Kaggle API setup or data file path.")
     st.stop()
 
 # Execute training and saving.
 clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
 
-st.title("Complete Sentiment Analysis Dashboard 📊")
+# --- Main Streamlit Interface ---
+st.title("Complete Text Analysis Dashboard 📊")
 
 # --- Input Area ---
 st.header("Text Input")
@@ -167,14 +168,14 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
         st.header("--- Analysis Results ---")
         
         # --- Sentiment Analysis ---
-        st.subheader("Sentiment Analysis") # No model name
+        st.subheader("Sentiment Analysis") 
         
         with st.spinner("Running Inference..."):
             sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(input_text, tfidf_vectorizer, clf)
             
             st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
             
-            # Bar Chart Styling (Medium size, less bar width)
+            # Bar Chart Styling (Medium size, Thinner bars)
             sentiment_df = pd.DataFrame({
                 'Sentiment': list(sentiment_probs.keys()),
                 'Probability': list(sentiment_probs.values())
@@ -182,14 +183,14 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
             color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
             sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-            fig, ax = plt.subplots(figsize=(6, 4)) # Medium Size
+            # Medium size fig, thinner bars (width=0.45)
+            fig, ax = plt.subplots(figsize=(6, 4)) 
             
-            # Using plt.bar for explicit width control (thinner bars)
             bars = ax.bar(
                 sentiment_df['Sentiment'], 
                 sentiment_df['Probability'], 
                 color=sentiment_df['Color'].tolist(),
-                width=0.45  # Controlled bar width
+                width=0.45  
             )
             ax.set_title('Sentiment Probability Distribution')
             ax.set_ylim(0, 1.05)
@@ -200,21 +201,4 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True):
         col_ext, col_abs = st.columns(2)
         
         with col_ext:
-            st.markdown("**Extractive Summary**")
-            with st.spinner("Generating Extractive Summary..."):
-                extractive_sum = extractive_reduce(input_text)
-                st.info(extractive_sum)
-
-        with col_abs:
-            st.markdown("**Abstractive Summary**") # No model name
-            with st.spinner("Generating Abstractive Summary..."):
-                abstractive_sum = abstractive_summarize_text(input_text, model_name="t5-small")
-                st.info(abstractive_sum)
-            
-        # --- Word Cloud ---
-        st.subheader("Word Cloud Visualization")
-        with st.spinner("Generating Word Cloud..."):
-            wc_image = generate_wc_image(input_text)
-            st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
-
-        # REMOVED Topic Modeling Insights (LDA) section
+            st.
