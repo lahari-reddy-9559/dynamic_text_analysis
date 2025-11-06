@@ -19,12 +19,18 @@ from sklearn.linear_model import SGDClassifier
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tensorflow.keras.optimizers import Adam # Kept for dependency completeness
 
-# --- Import Utilities ---
+# --- Import Summarization Utilities ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
-    st.error("Could not find summarization_utils.py. Please create it as per instructions.")
+    st.error("Could not find summarization_utils.py. Please ensure it is in the same directory.")
+
+warnings.filterwarnings("ignore")
+# Suppress TensorFlow warnings
+import tensorflow as tf
+tf.get_logger().setLevel('ERROR')
 
 # --- Configuration ---
 MODEL_DIR = 'models'
@@ -38,13 +44,12 @@ RANDOM_STATE = 42
 def load_and_preprocess_data():
     st.text("Step 1/3: Downloading Data and Setting up NLTK...")
     try:
-        # Download dataset from Kaggle Hub (Requires Kaggle API setup or manual download for deployment)
+        # Download dataset from Kaggle Hub
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
-        st.error(f"Data download failed. Ensure Kaggle authentication is set up or the path is correct. Error: {e}")
-        # Return empty if download fails, forcing a stop later
+        st.error(f"Data download failed. Ensure Kaggle API credentials are set up or the path is correct. Error: {e}")
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
@@ -81,23 +86,23 @@ def load_and_preprocess_data():
     return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource
-def train_and_save_models(X_train, y_train_numeric, tfidf_vectorizer):
+def train_and_save_models(_X_train, y_train_numeric, tfidf_vectorizer):
     st.text("Step 2/3: Training Models and Saving Artifacts...")
     
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
     
-    # --- Train SGD Classifier (Simulating your process) ---
+    # --- Train SGD Classifier ---
     clf = SGDClassifier(loss='log_loss', penalty='l2', random_state=RANDOM_STATE, learning_rate='adaptive', eta0=0.01)
     classes = np.unique(y_train_numeric)
     
-    # Epoch training loop (for better SGD convergence)
+    # Epoch training loop
     for epoch in range(50):
-        perm = np.random.permutation(X_train.shape[0])
-        X_shuf, y_shuf = X_train[perm], y_train_numeric.iloc[perm]
+        perm = np.random.permutation(_X_train.shape[0])
+        X_shuf, y_shuf = _X_train[perm], y_train_numeric.iloc[perm]
         clf.partial_fit(X_shuf, y_shuf, classes=classes)
         
-    # --- Save Artifacts (Required for Streamlit App to run inference) ---
+    # --- Save Artifacts ---
     joblib.dump(tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'sgd_sentiment_classifier.pkl'))
     joblib.dump(sentiment_mapping, os.path.join(MODEL_DIR, 'sentiment_mapping.pkl'))
@@ -145,7 +150,8 @@ if df is None or tfidf_vectorizer is None:
     st.error("Setup failed due to data loading error. Check Kaggle API setup.")
     st.stop()
 
-clf, tfidf_vectorizer = train_and_save_models(X_train, y_train_numeric, tfidf_vectorizer)
+# FIX APPLIED HERE: X_train renamed to _X_train to avoid UnhashableParamError
+clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, y_train_numeric=y_train_numeric, tfidf_vectorizer=tfidf_vectorizer)
 
 # --- Main Streamlit Interface ---
 st.text("Step 3/3: Launching User Interface...")
@@ -208,6 +214,13 @@ if st.button("Run Full Analysis", type="primary", use_container_width=True) and 
     with st.spinner("Generating Word Cloud..."):
         wc_image = generate_wc_image(input_text)
         st.image(wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
+
+    # --- Topic Modeling Placeholder ---
+    st.subheader("4. Topic Modeling Insights (LDA)")
+    st.warning("""
+    Topic-level visualization is disabled because the LDA model and the topic aggregation table 
+    (`lda_topic_sentiment_summary.csv`) were not explicitly saved and loaded in this consolidated script.
+    """)
 
 elif st.button("Run Full Analysis", use_container_width=True) and not input_text:
     st.error("Please provide text or upload a file to analyze.")
