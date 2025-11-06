@@ -13,3 +13,5 @@ sentencepiece
 torch
 kagglehub
 tensorflow
+keras
+
