@@ -79,6 +79,19 @@ def _frequency_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max
     return " ".join([s for (_score, _i, s) in top_sorted])
 
 
+# --- NEW: Context detection for technical lists ---
+def _is_technical_list(text: str) -> bool:
+    """Checks if the text looks like a short, non-prose list (like requirements.txt)."""
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    # Check if text is short overall but has multiple distinct lines
+    if len(lines) > 2 and len(text) < 300: 
+        # Check if most lines look like single items/dependencies (no sentence-ending punctuation)
+        non_sentence_lines = sum(1 for line in lines if not re.search(r'[.!?]$', line))
+        # If more than 70% of lines don't end in punctuation, assume it's a list.
+        return non_sentence_lines / len(lines) > 0.7 
+    return False
+
+
 @st.cache_resource(show_spinner=False)
 def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
@@ -124,13 +137,25 @@ def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.
 def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_length: int = 150, min_length: int = 30, use_reduced: bool = True) -> str:
     """
     Summarizes text using a transformer model. Increased max_length and min_length 
-    to provide a more detailed abstract.
+    to provide a more detailed abstract. Now includes contextual prompting for lists.
     """
     avail, err = try_enable_transformers()
     if not avail: raise RuntimeError(err or "models not available")
     
     reduced = _frequency_reduce(text, ratio=0.25, min_sentences=1, max_sentences=6) if use_reduced else text
-    trimmed = trim_for_model(reduced, model_name)
+    initial_text = reduced # Text to be passed to the model
+    
+    # --- NEW LOGIC: Contextual Prompting for Technical Lists ---
+    prompt_prefix = ""
+    if _is_technical_list(text):
+        if max_length < 100:
+             # Short prompt for Key Insights
+             prompt_prefix = "The following is a list of software requirements or dependencies. Describe the nature and function of this list concisely: "
+        else:
+             # Longer prompt for Detailed Abstract
+             prompt_prefix = "The following is a list of software requirements or dependencies. Provide a professional analysis of the project context and potential application based on these modules: "
+
+    trimmed = trim_for_model(prompt_prefix + initial_text, model_name)
     
     if not trimmed:
         return "Input text was too short or failed preprocessing."
@@ -148,16 +173,15 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
 def extractive_reduce(text: str, model_name: str = "t5-small") -> str:
     """
     Generates a very short, abstractive summary (Key Insights) using the transformer.
-    Uses abstractive_summarize_text with short length parameters. Lengths increased 
-    to provide more context when analyzing structured text.
+    Uses abstractive_summarize_text with short length parameters.
     """
     try:
         # Optimized parameters for very concise output
         return abstractive_summarize_text(
             text=text, 
             model_name=model_name, 
-            max_length=80,  # Increased from 60
-            min_length=25,  # Increased from 15
+            max_length=80,
+            min_length=25,
             use_reduced=True
         )
     except Exception as e:
