@@ -184,7 +184,7 @@ if text_input.strip():
         # Compact Bar Graph (smaller width + height)
         df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
         color_map = {'negative': '#F87171', 'neutral': '#FACC15', 'positive': '#34D399'}
-        fig, ax = plt.subplots(figsize=(1.1,1.3))
+        fig, ax = plt.subplots(figsize=(3.3,2.1))
         ax.bar(df_s["Sentiment"], df_s["Probability"],
                color=[color_map[s] for s in df_s["Sentiment"]],
                width=0.3, edgecolor='gray')
