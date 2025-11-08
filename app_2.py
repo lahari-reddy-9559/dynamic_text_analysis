@@ -214,7 +214,7 @@ if text_input.strip():
     elif choice == "wordcloud":
         st.subheader("☁️ Word Cloud Visualization")
         wc_img = generate_wc(text_input)
-        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=350)
+        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=550)
 
     # --- PDF Download ---
     if st.button("📥 Download Full Report (PDF)"):
@@ -256,3 +256,4 @@ if text_input.strip():
 
 else:
     st.info("💡 Enter text or upload a file to start analyzing.")
+
