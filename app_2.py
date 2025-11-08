@@ -184,7 +184,7 @@ if text_input.strip():
         # Compact Bar Graph (smaller width + height)
         df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
         color_map = {'negative': '#F87171', 'neutral': '#FACC15', 'positive': '#34D399'}
-        fig, ax = plt.subplots(figsize=(3.3,2.1))
+        fig, ax = plt.subplots(figsize=(3.8, 2.2))
         ax.bar(df_s["Sentiment"], df_s["Probability"],
                color=[color_map[s] for s in df_s["Sentiment"]],
                width=0.3, edgecolor='gray')
@@ -210,7 +210,7 @@ if text_input.strip():
     elif choice == "wordcloud":
         st.subheader("☁️ Word Cloud Visualization")
         wc_img = generate_wc(text_input)
-        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=450)
+        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=350)
 
     # --- PDF Download ---
     if st.button("📥 Download Full Report (PDF)"):
@@ -252,6 +252,3 @@ if text_input.strip():
 
 else:
     st.info("💡 Enter text or upload a file to start analyzing.")
-
-
-
