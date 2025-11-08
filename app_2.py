@@ -1,4 +1,4 @@
-# app.py — Lahari Reddy | Compact Beautiful Version 🌈
+# app.py — Lahari Reddy | Compact & Aesthetic Version 🌈✨
 
 import kagglehub
 import os
@@ -47,19 +47,19 @@ st.set_page_config(
     page_icon="💬"
 )
 
-# --- 🌸 Custom Theme + Background Gradient ---
+# --- 🌸 Compact Colorful Theme ---
 st.markdown("""
 <style>
 body {
-    background: linear-gradient(135deg, #e3f2fd 0%, #ede7f6 100%);
+    background: linear-gradient(135deg, #FDEFF9 0%, #ECF4FF 50%, #E8F9F0 100%);
     font-family: 'Poppins', sans-serif;
 }
 div.block-container {
     padding-top: 2rem;
-    background-color: rgba(255, 255, 255, 0.85);
-    border-radius: 15px;
-    padding: 30px;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.1);
+    background-color: rgba(255, 255, 255, 0.92);
+    border-radius: 18px;
+    padding: 25px 30px;
+    box-shadow: 0px 4px 25px rgba(0,0,0,0.08);
 }
 h1, h2, h3 {
     color: #4B0082;
@@ -71,8 +71,8 @@ h1, h2, h3 {
     border: none;
     border-radius: 8px;
     font-weight: bold;
-    padding: 0.6em 1.3em;
-    transition: 0.3s;
+    padding: 0.55em 1.1em;
+    transition: 0.25s ease-in-out;
 }
 .stButton>button:hover {
     transform: scale(1.05);
@@ -139,7 +139,7 @@ def analyze_sentiment(text, vec, clf):
 def generate_wc(text):
     clean_t = clean_text_util(text)
     freq = pd.Series(clean_t.split()).value_counts().to_dict()
-    wc = WordCloud(width=400, height=200, background_color='white').generate_from_frequencies(freq)
+    wc = WordCloud(width=350, height=180, background_color='white', colormap='cool').generate_from_frequencies(freq)
     img_io = io.BytesIO(); wc.to_image().save(img_io, 'PNG'); img_io.seek(0)
     return Image.open(img_io)
 
@@ -152,15 +152,14 @@ clf, vec = st.session_state.clf, st.session_state.vec
 
 # --- UI Header ---
 st.title("💬 Text Insight Studio")
-st.caption("Developed by **Lahari Reddy** | Analyze sentiment, summarize text, and visualize insights beautifully ✨")
+st.caption("Developed by **Lahari Reddy** 🌸 | Sentiment, Summaries & Visual Insights — Compact & Beautiful ✨")
 
 # --- Input Area ---
-text_input = st.text_area("📝 Enter Text:", placeholder="Type or paste your text here...", height=180)
+text_input = st.text_area("📝 Enter Text:", placeholder="Type or paste your text here...", height=160)
 uploaded = st.file_uploader("📄 Or upload a text file:", type=["txt"])
 if uploaded:
     text_input = uploaded.read().decode("utf-8", errors="ignore")
 
-# --- Button Row ---
 st.markdown("---")
 cols = st.columns(4)
 choice = None
@@ -168,7 +167,6 @@ buttons = [("🧠 Sentiment Analysis", "sentiment"),
            ("✂️ Extractive Summary", "extractive"),
            ("🪶 Abstractive Summary", "abstractive"),
            ("☁️ Word Cloud", "wordcloud")]
-
 for (label, val), col in zip(buttons, cols):
     with col:
         if st.button(label):
@@ -183,16 +181,16 @@ if text_input.strip():
         data, top = analyze_sentiment(text_input, vec, clf)
         st.success(f"Predicted Sentiment: **{top.upper()}**")
 
-        # Compact Bar Graph
+        # Compact Bar Graph (smaller width + height)
         df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
-        color_map = {'negative': '#EF5350', 'neutral': '#FFD54F', 'positive': '#66BB6A'}
-        fig, ax = plt.subplots(figsize=(4.5, 2.5))  # smaller
+        color_map = {'negative': '#F87171', 'neutral': '#FACC15', 'positive': '#34D399'}
+        fig, ax = plt.subplots(figsize=(3.8, 2.2))
         ax.bar(df_s["Sentiment"], df_s["Probability"],
                color=[color_map[s] for s in df_s["Sentiment"]],
-               width=0.35, edgecolor='gray')
+               width=0.3, edgecolor='gray')
         ax.set_ylim(0, 1.05)
-        ax.set_title("Sentiment Confidence Levels", fontsize=10)
-        ax.grid(axis='y', linestyle='--', alpha=0.4)
+        ax.set_title("Sentiment Confidence Levels", fontsize=9)
+        ax.grid(axis='y', linestyle='--', alpha=0.3)
         for spine in ['top', 'right']:
             ax.spines[spine].set_visible(False)
         plt.tight_layout()
@@ -212,7 +210,7 @@ if text_input.strip():
     elif choice == "wordcloud":
         st.subheader("☁️ Word Cloud Visualization")
         wc_img = generate_wc(text_input)
-        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=400)
+        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=350)
 
     # --- PDF Download ---
     if st.button("📥 Download Full Report (PDF)"):
@@ -244,9 +242,9 @@ if text_input.strip():
         img_path = "wordcloud_small.png"
         generate_wc(text_input).save(img_path)
         elements.append(Spacer(1, 8))
-        elements.append(RLImage(img_path, width=4*inch, height=2.5*inch))
-
+        elements.append(RLImage(img_path, width=3.8*inch, height=2.2*inch))
         doc.build(elements)
+
         st.download_button("⬇️ Save Compact PDF Report",
                            data=buffer.getvalue(),
                            file_name="Text_Insight_Compact_Report.pdf",
