@@ -15,9 +15,10 @@ try:
         
     lemmatizer = WordNetLemmatizer()
     STOPWORDS = set(nltk.corpus.stopwords.words("english"))
-except Exception:
+except Exception as e:
     lemmatizer = None
     STOPWORDS = set()
+    print(f"NLTK setup failed: {e}")
 
 # Global check for Transformers availability
 _TRANSFORMERS_AVAILABLE = False
@@ -35,15 +36,15 @@ def try_enable_transformers():
         _TRANSFORMERS_AVAILABLE = False
         err_str = str(e)
         
-        # This is where the error state is detected internally
+        # Check for specific dependency errors related to ML models
         if "No module named 'transformers'" in err_str:
-             return False, "ML library weirdness occurred. Transformers missing."
+             return False, "Transformer model failed: Please install the 'transformers' library."
         if "Keras 3" in err_str or "tf-keras" in err_str:
-             return False, "Keras 3/tf-keras error detected."
-        return False, f"ML library error occurred. ({err_str[:40]}...)"
+             return False, "Transformer model failed: Dependency error detected (Keras 3/tf-keras). Run 'pip install tf-keras'."
+        return False, f"Transformer model failed: Unknown error. ({err_str[:40]}...)"
 
 
-# --- Core NLP Functions ---
+# --- Core NLP Utilities ---
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 
 def split_sentences(text: str) -> List[str]:
@@ -61,7 +62,8 @@ def clean_text(text: str) -> str:
     toks = [lemmatizer.lemmatize(w) for w in t.split() if w and w not in STOPWORDS] if lemmatizer else t.split()
     return " ".join(toks)
 
-def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max_sentences: int = 6) -> str:
+# Helper function for frequency reduction (used internally for pre-reduction before model)
+def _frequency_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max_sentences: int = 6) -> str:
     sentences = split_sentences(text)
     if len(sentences) <= 1: return text
     freq = {}
@@ -76,6 +78,7 @@ def extractive_reduce(text: str, ratio: float = 0.3, min_sentences: int = 1, max
     top_sorted = sorted(top, key=lambda x: x[1])
     return " ".join([s for (_score, _i, s) in top_sorted])
 
+
 @st.cache_resource(show_spinner=False)
 def make_abstractive_pipeline(model_name: str = "t5-small"):
     avail, err = try_enable_transformers()
@@ -88,9 +91,8 @@ def make_abstractive_pipeline(model_name: str = "t5-small"):
     return pipeline("summarization", model=model_name, tokenizer=model_name, device=device)
 
 def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.9) -> str:
-    # Requires try_enable_transformers check
     avail, err = try_enable_transformers()
-    if not avail: return text
+    if not avail: raise RuntimeError(err or "models not available")
     
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -118,13 +120,17 @@ def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.
 
     return " ".join(trimmed_sents)
 
+
 def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_length: int = 120, min_length: int = 20, use_reduced: bool = True) -> str:
     avail, err = try_enable_transformers()
     if not avail: raise RuntimeError(err or "models not available")
     
-    reduced = extractive_reduce(text, ratio=0.25, min_sentences=1, max_sentences=6) if use_reduced else text
+    reduced = _frequency_reduce(text, ratio=0.25, min_sentences=1, max_sentences=6) if use_reduced else text
     trimmed = trim_for_model(reduced, model_name)
     
+    if not trimmed:
+        return "Input text was too short or failed preprocessing."
+        
     try:
         summarizer = make_abstractive_pipeline(model_name)
         out = summarizer(trimmed, max_length=max_length, min_length=min_length, do_sample=False)
@@ -132,5 +138,22 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
             return out[0].get("summary_text", "").strip()
         return str(out)
     except Exception as e:
-        # Re-raise the exception so the calling app.py can catch and display the custom message
+        raise e
+
+# --- Transformer-based "Extractive" (Key Insights) function using the same model ---
+def extractive_reduce(text: str, model_name: str = "t5-small") -> str:
+    """
+    Generates a very short, abstractive summary (Key Insights) using the transformer.
+    Uses abstractive_summarize_text with short length parameters.
+    """
+    try:
+        # Optimized parameters for very concise output
+        return abstractive_summarize_text(
+            text=text, 
+            model_name=model_name, 
+            max_length=60, 
+            min_length=15, 
+            use_reduced=True
+        )
+    except Exception as e:
         raise e
