@@ -228,8 +228,8 @@ vec = st.session_state.vec
 # -------------------------
 # UI Header
 # -------------------------
-st.title("💬 Text Insight Studio")
-st.caption("Developed by **Lahari Reddy** — Compact visuals, dark-mode adaptive, professional look ✨")
+st.title("💬 TalkTective")
+st.caption("Developed by **Lahari Reddy** - the AI detective that investigates your text✨")
 
 # Input area
 text_input = st.text_area("📝 Enter Text:", placeholder="Paste or type text to analyze...", height=160)
@@ -339,3 +339,4 @@ if text_input and text_input.strip():
                            mime="application/pdf")
 else:
     st.info("💡 Enter text above or upload a file to start analysis.")
+
