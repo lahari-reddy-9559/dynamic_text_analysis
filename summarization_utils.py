@@ -7,11 +7,18 @@ from nltk.stem import WordNetLemmatizer
 from typing import List
 
 # --- Setup ---
+# Check and download NLTK data if necessary
+try:
+    nltk.data.find('corpora/stopwords')
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('stopwords', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    
 try:
     lemmatizer = WordNetLemmatizer()
     STOPWORDS = set(nltk.corpus.stopwords.words("english"))
 except Exception:
-    # Fallback if NLTK data is missing during import
     lemmatizer = None
     STOPWORDS = set()
 
@@ -23,7 +30,8 @@ def try_enable_transformers():
     global _TRANSFORMERS_AVAILABLE
     if _TRANSFORMERS_AVAILABLE: return True, None
     try:
-        from transformers import pipeline, AutoTokenizer
+        # We need to import these to test availability
+        from transformers import pipeline, AutoTokenizer 
         import torch
         _TRANSFORMERS_AVAILABLE = True
         return True, None
@@ -53,7 +61,6 @@ def clean_text(text: str) -> str:
     if not isinstance(text, str): return ""
     t = text.lower()
     t = t.translate(str.maketrans("", "", r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""))
-    # Ensure lemmatizer is available
     toks = [lemmatizer.lemmatize(w) for w in t.split() if w and w not in STOPWORDS] if lemmatizer else t.split()
     return " ".join(toks)
 
@@ -80,11 +87,11 @@ def make_abstractive_pipeline(model_name: str = "t5-small"):
     
     from transformers import pipeline
     import torch as _torch
+    # Use GPU if available, otherwise use CPU
     device = 0 if _torch.cuda.is_available() else -1
     return pipeline("summarization", model=model_name, tokenizer=model_name, device=device)
 
 def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.9) -> str:
-    # Requires try_enable_transformers check
     avail, err = try_enable_transformers()
     if not avail: return text
     
@@ -128,5 +135,5 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
             return out[0].get("summary_text", "").strip()
         return str(out)
     except Exception as e:
-        # Re-raise the exception so the calling app.py can catch and display the custom message
+        # Re-raise the exception for the main app to catch and display the custom message
         raise e
