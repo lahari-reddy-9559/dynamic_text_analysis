@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from wordcloud import WordCloud
 import tensorflow as tf
-import base64 # Required for file download
+import base64 
 
 # --- Import Summarization Utilities (Requires summarization_utils.py) ---
 try:
@@ -108,7 +108,7 @@ The analysis was performed using a **RandomForest Classifier** trained on the Ka
     report += "\n\n---"
     return report
 
-# --- 2. ML Backend Functions (Unchanged Core Logic) ---
+# --- 2. ML Backend Functions ---
 
 @st.cache_data(show_spinner="Preparing data and models (This may take a moment)...")
 def load_and_preprocess_data():
@@ -138,24 +138,23 @@ def load_and_preprocess_data():
     tfidf_vectorizer.fit(df['cleaned_text'])
     tfidf_matrix = tfidf_vectorizer.transform(df['cleaned_text'])
     
-    X_train, _, _, _ = train_test_split(
+    X_train, X_test, y_train_str, y_test_str = train_test_split(
         tfidf_matrix, df['sentiment'], test_size=0.2, random_state=RANDOM_STATE, stratify=df['sentiment']
     )
-    y_train_numeric = pd.Series(df['sentiment']).map(sentiment_mapping).astype(int)
-    y_train_numeric = y_train_numeric.loc[X_train.index] # Align target with X_train indices
-
-    return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, None, None
+    
+    # FIX APPLIED HERE: Map the already split y_train_str to numeric values, avoiding the X_train.index error.
+    y_train_numeric = y_train_str.map(sentiment_mapping).astype(int)
+    
+    return df, tfidf_vectorizer, X_train, y_train_numeric, tfidf_matrix, X_test, y_test_str
 
 @st.cache_resource(show_spinner=False)
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
-    # RandomForestClassifier requires dense input for training
     st.info("🌳 Starting RandomForest Model Training... This runs once.")
     X_train_dense = _X_train.toarray()
     
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
     clf.fit(X_train_dense, _y_train_numeric)
     
-    # Save artifacts (optional in Streamlit but good practice)
     if not os.path.exists(MODEL_DIR): os.makedirs(MODEL_DIR)
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
     joblib.dump(clf, os.path.join(MODEL_DIR, 'random_forest_sentiment_classifier.pkl'))
@@ -166,7 +165,7 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
-    text_vec_dense = text_vec.toarray() # RandomForest requires dense input
+    text_vec_dense = text_vec.toarray() 
     probabilities = classifier.predict_proba(text_vec_dense)[0]
     
     sentiment_data = {}
@@ -224,7 +223,15 @@ with st.spinner("⏳ Initializing ML Environment..."):
     if df is None:
         st.error("Setup failed: Could not load ML data.")
         st.stop()
-    clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+    
+    # Store model and vectorizer in session state to avoid re-initializing on UI interaction
+    if 'clf' not in st.session_state or 'tfidf_vectorizer' not in st.session_state:
+        clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
+        st.session_state.clf = clf
+        st.session_state.tfidf_vectorizer = tfidf_vectorizer
+    else:
+        clf = st.session_state.clf
+        tfidf_vectorizer = st.session_state.tfidf_vectorizer
 
 
 # --- Input and Control Area ---
@@ -260,7 +267,6 @@ if st.button("🚀 Run Full Analysis", type="primary", use_container_width=True)
         st.error("🚨 Please paste or upload text before running the analysis.")
     else:
         st.session_state.run_analysis = True
-        # Store results in session state to persist across reruns/tabs
         st.session_state.results = {}
         st.toast("Analysis starting...", icon='🔍')
 
@@ -376,7 +382,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.text_input:
         st.markdown('</div>', unsafe_allow_html=True)
 
     
-    # --- Download Report Section (INSIGHTS/BUTTON CLICKS) ---
+    # --- Download Report Section ---
     st.markdown("---")
     st.subheader("3. Generate & Download Report 📥")
     
@@ -389,7 +395,7 @@ if st.session_state.get('run_analysis', False) and st.session_state.text_input:
         results['abstractive_sum']
     )
     
-    # Use Streamlit's built-in download button for simplicity and reliability
+    # Use Streamlit's built-in download button
     st.download_button(
         label="Download Full Analysis Report (.md)",
         data=report_content,
