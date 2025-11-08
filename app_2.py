@@ -42,7 +42,7 @@ RANDOM_STATE = 42
 
 # --- Streamlit Config ---
 st.set_page_config(
-    page_title="Text Insight Studio | Lahari Reddy",
+    page_title="Talktective Studio | Lahari Reddy",
     layout="wide",
     page_icon="💬"
 )
@@ -339,4 +339,5 @@ if text_input and text_input.strip():
                            mime="application/pdf")
 else:
     st.info("💡 Enter text above or upload a file to start analysis.")
+
 
