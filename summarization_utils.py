@@ -121,7 +121,11 @@ def trim_for_model(text: str, model_name: str, fraction_of_model_max: float = 0.
     return " ".join(trimmed_sents)
 
 
-def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_length: int = 120, min_length: int = 20, use_reduced: bool = True) -> str:
+def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_length: int = 150, min_length: int = 30, use_reduced: bool = True) -> str:
+    """
+    Summarizes text using a transformer model. Increased max_length and min_length 
+    to provide a more detailed abstract.
+    """
     avail, err = try_enable_transformers()
     if not avail: raise RuntimeError(err or "models not available")
     
@@ -144,15 +148,16 @@ def abstractive_summarize_text(text: str, model_name: str = "t5-small", max_leng
 def extractive_reduce(text: str, model_name: str = "t5-small") -> str:
     """
     Generates a very short, abstractive summary (Key Insights) using the transformer.
-    Uses abstractive_summarize_text with short length parameters.
+    Uses abstractive_summarize_text with short length parameters. Lengths increased 
+    to provide more context when analyzing structured text.
     """
     try:
         # Optimized parameters for very concise output
         return abstractive_summarize_text(
             text=text, 
             model_name=model_name, 
-            max_length=60, 
-            min_length=15, 
+            max_length=80,  # Increased from 60
+            min_length=25,  # Increased from 15
             use_reduced=True
         )
     except Exception as e:
