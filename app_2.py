@@ -1,4 +1,4 @@
-# app.py — Lahari Reddy | Compact & Aesthetic Version 🌈✨
+# app.py — Lahari Reddy | Compact, Dark-Mode Adaptive (500x300 px visuals)
 
 import kagglehub
 import os
@@ -24,7 +24,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 
-# --- Summarization Utils ---
+# --- Summarization Utils (unchanged) ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
@@ -47,7 +47,7 @@ st.set_page_config(
     page_icon="💬"
 )
 
-# --- 🌸 Compact Colorful Theme ---
+# --- Visual theme (keeps previous look but we'll adapt plots to streamlit theme) ---
 st.markdown("""
 <style>
 body {
@@ -55,11 +55,11 @@ body {
     font-family: 'Poppins', sans-serif;
 }
 div.block-container {
-    padding-top: 2rem;
-    background-color: rgba(255, 255, 255, 0.92);
-    border-radius: 18px;
-    padding: 25px 30px;
-    box-shadow: 0px 4px 25px rgba(0,0,0,0.08);
+    padding-top: 1.6rem;
+    background-color: rgba(255, 255, 255, 0.94);
+    border-radius: 14px;
+    padding: 20px 24px;
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.06);
 }
 h1, h2, h3 {
     color: #4B0082;
@@ -70,24 +70,15 @@ h1, h2, h3 {
     color: white;
     border: none;
     border-radius: 8px;
-    font-weight: bold;
-    padding: 0.55em 1.1em;
-    transition: 0.25s ease-in-out;
-}
-.stButton>button:hover {
-    transform: scale(1.05);
-    background: linear-gradient(90deg, #00BFA6, #6C63FF);
-}
-.result-box {
-    background: rgba(255, 255, 255, 0.85);
-    border-radius: 10px;
-    padding: 15px;
-    box-shadow: 0px 2px 8px rgba(0,0,0,0.1);
+    font-weight: 600;
+    padding: 0.5em 1.0em;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Data Loading ---
+# -------------------------
+# Data Loading & Preprocess
+# -------------------------
 @st.cache_data(show_spinner="📦 Loading dataset & models...")
 def load_and_preprocess_data():
     try:
@@ -97,9 +88,12 @@ def load_and_preprocess_data():
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
+
     for pkg in ['punkt', 'stopwords', 'wordnet']:
-        try: nltk.data.find(f'tokenizers/{pkg}' if pkg == 'punkt' else f'corpora/{pkg}')
-        except LookupError: nltk.download(pkg, quiet=True)
+        try:
+            nltk.data.find(f'tokenizers/{pkg}' if pkg == 'punkt' else f'corpora/{pkg}')
+        except LookupError:
+            nltk.download(pkg, quiet=True)
 
     lemmatizer = WordNetLemmatizer()
     stop_words = set(stopwords.words('english'))
@@ -119,17 +113,34 @@ def load_and_preprocess_data():
     y_train_num = pd.Series(y_train).map(sentiment_mapping).astype(int)
     return df, vec, X_train, y_train_num, X, X_test, y_test
 
-# --- Model Training (fixed cache issue) ---
+# -------------------------
+# Train (cache-safe)
+# -------------------------
 @st.cache_resource
 def train_and_save_models(_X_train, _y_train_num, _vec):
-    if not os.path.exists(MODEL_DIR): os.makedirs(MODEL_DIR)
+    if not os.path.exists(MODEL_DIR):
+        os.makedirs(MODEL_DIR)
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
     clf.fit(_X_train.toarray(), _y_train_num)
     joblib.dump(clf, os.path.join(MODEL_DIR, 'rf_sentiment.pkl'))
     joblib.dump(_vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
     return clf, _vec
 
-# --- Utility Functions ---
+# -------------------------
+# Theme detection helper
+# -------------------------
+def is_streamlit_dark():
+    """Return True if Streamlit theme is dark; fallback False."""
+    try:
+        base = st.get_option("theme.base")
+        return base == "dark"
+    except Exception:
+        # if option not present, try reading runtime theme color - fallback light
+        return False
+
+# -------------------------
+# Utility functions
+# -------------------------
 def analyze_sentiment(text, vec, clf):
     clean_t = clean_text_util(text)
     X = vec.transform([clean_t]).toarray()
@@ -138,123 +149,41 @@ def analyze_sentiment(text, vec, clf):
     top = reverse_sentiment_mapping[clf.classes_[np.argmax(probs)]]
     return results, top
 
-def generate_wc(text):
+def generate_wc_image(text, dark_mode=False):
+    """Return PIL Image of WordCloud sized 500x300 pixels."""
     clean_t = clean_text_util(text)
-    freq = pd.Series(clean_t.split()).value_counts().to_dict()
-    wc = WordCloud(width=350, height=180, background_color='white', colormap='cool').generate_from_frequencies(freq)
-    img_io = io.BytesIO()
-    wc.to_image().save(img_io, 'PNG')
-    img_io.seek(0)
-    return Image.open(img_io)
+    if not clean_t:
+        # Empty white/black image based on mode
+        bg = "black" if dark_mode else "white"
+        im = Image.new("RGB", (500, 300), color=bg)
+        return im
 
-# --- Model Load ---
-if 'clf' not in st.session_state:
-    df, vec, X_train, y_train_num, _, _, _ = load_and_preprocess_data()
-    clf, tfidf = train_and_save_models(X_train, y_train_num, vec)
-    st.session_state.clf, st.session_state.vec = clf, tfidf
-clf, vec = st.session_state.clf, st.session_state.vec
+    # WordCloud with exact pixel dimensions
+    wc = WordCloud(width=500, height=300,
+                   background_color="black" if dark_mode else "white",
+                   colormap="plasma" if dark_mode else "viridis",
+                   max_words=150).generate(clean_t)
 
-# --- UI Header ---
-st.title("💬 Text Insight Studio")
-st.caption("Developed by **Lahari Reddy** 🌸 | Sentiment, Summaries & Visual Insights — Compact & Beautiful ✨")
+    img = wc.to_image()  # PIL image at 500x300
+    return img
 
-# --- Input Area ---
-text_input = st.text_area("📝 Enter Text:", placeholder="Type or paste your text here...", height=160)
-uploaded = st.file_uploader("📄 Or upload a text file:", type=["txt"])
-if uploaded:
-    text_input = uploaded.read().decode("utf-8", errors="ignore")
+def plot_compact_bar(sentiment_dict, dark_mode=False):
+    """
+    Create a compact bar chart sized 500x300 px (figsize 5x3 at dpi=100).
+    Returns the matplotlib Figure.
+    """
+    labels = list(sentiment_dict.keys())
+    vals = [sentiment_dict[k] for k in labels]
 
-st.markdown("---")
-cols = st.columns(4)
-choice = None
-buttons = [("🧠 Sentiment Analysis", "sentiment"),
-           ("✂️ Extractive Summary", "extractive"),
-           ("🪶 Abstractive Summary", "abstractive"),
-           ("☁️ Word Cloud", "wordcloud")]
-for (label, val), col in zip(buttons, cols):
-    with col:
-        if st.button(label):
-            choice = val
+    # Theme-aware colors
+    if dark_mode:
+        bg = "#0b0f14"
+        text_color = "white"
+        bar_colors = ['#FF6B6B', '#FFD166', '#06D6A0']  # vivid on dark
+    else:
+        bg = "white"
+        text_color = "#222222"
+        bar_colors = ['#F87171', '#FACC15', '#34D399']
 
-st.markdown("---")
-
-# --- Main Logic ---
-if text_input.strip():
-    if choice == "sentiment":
-        st.subheader("🧠 Sentiment Analysis")
-        data, top = analyze_sentiment(text_input, vec, clf)
-        st.success(f"Predicted Sentiment: **{top.upper()}**")
-
-        # Compact Bar Graph (smaller width + height)
-        df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
-        color_map = {'negative': '#F87171', 'neutral': '#FACC15', 'positive': '#34D399'}
-        fig, ax = plt.subplots(figsize=(3.8, 2.2))
-        ax.bar(df_s["Sentiment"], df_s["Probability"],
-               color=[color_map[s] for s in df_s["Sentiment"]],
-               width=0.3, edgecolor='gray')
-        ax.set_ylim(0, 1.05)
-        ax.set_title("Sentiment Confidence Levels", fontsize=9)
-        ax.grid(axis='y', linestyle='--', alpha=0.3)
-        for spine in ['top', 'right']:
-            ax.spines[spine].set_visible(False)
-        plt.tight_layout()
-        st.pyplot(fig)
-
-    elif choice == "extractive":
-        st.subheader("✂️ Extractive Summary")
-        st.info(extractive_reduce(text_input))
-
-    elif choice == "abstractive":
-        st.subheader("🪶 Abstractive Summary")
-        try:
-            st.info(abstractive_summarize_text(text_input))
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    elif choice == "wordcloud":
-        st.subheader("☁️ Word Cloud Visualization")
-        wc_img = generate_wc(text_input)
-        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=750)
-
-    # --- PDF Download ---
-    if st.button("📥 Download Full Report (PDF)"):
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        styles = getSampleStyleSheet()
-        elements = [
-            Paragraph("<b>Text Insight Studio - Compact Report</b>", styles["Title"]),
-            Spacer(1, 12),
-            Paragraph("Original Text:", styles["Heading2"]),
-            Paragraph(text_input[:1000] + ("..." if len(text_input) > 1000 else ""), styles["Normal"]),
-            Spacer(1, 10)
-        ]
-
-        data, top = analyze_sentiment(text_input, vec, clf)
-        elements.append(Paragraph("Predicted Sentiment:", styles["Heading2"]))
-        elements.append(Paragraph(str(top).upper(), styles["Normal"]))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph("Extractive Summary:", styles["Heading2"]))
-        elements.append(Paragraph(extractive_reduce(text_input), styles["Normal"]))
-
-        try:
-            elements.append(Spacer(1, 8))
-            elements.append(Paragraph("Abstractive Summary:", styles["Heading2"]))
-            elements.append(Paragraph(abstractive_summarize_text(text_input), styles["Normal"]))
-        except:
-            pass
-
-        img_path = "wordcloud_small.png"
-        generate_wc(text_input).save(img_path)
-        elements.append(Spacer(1, 8))
-        elements.append(RLImage(img_path, width=3.8*inch, height=2.2*inch))
-        doc.build(elements)
-
-        st.download_button("⬇️ Save Compact PDF Report",
-                           data=buffer.getvalue(),
-                           file_name="Text_Insight_Compact_Report.pdf",
-                           mime="application/pdf")
-
-else:
-    st.info("💡 Enter text or upload a file to start analyzing.")
-
-
+    fig, ax = plt.subplots(figsize=(5, 3), dpi=100)  # 500x300 px
+    bars = ax.bar(labels, vals,
