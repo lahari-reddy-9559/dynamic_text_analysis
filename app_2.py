@@ -18,8 +18,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from wordcloud import WordCloud
 import tensorflow as tf
+from datetime import datetime
 
-# --- Import Summarization Utilities (Requires summarization_utils.py) ---
+# --- Import Summarization Utilities ---
+# Assumes summarization_utils.py is present in the same directory
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
@@ -35,6 +37,7 @@ sentiment_mapping = {'negative': 0, 'neutral': 1, 'positive': 2}
 reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
+RANDOM_FOREST_MODEL_NAME = 'random_forest_sentiment_classifier.pkl'
 
 # --- 2. ML Backend Functions (SILENT EXECUTION) ---
 
@@ -42,10 +45,12 @@ RANDOM_STATE = 42
 def load_and_preprocess_data():
     # Uses Kaggle Data, TF-IDF, and Lemmatization
     try:
+        # NOTE: If running outside a secure environment, KaggleHub might require authentication setup.
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
         file_path = os.path.join(path, 'train.csv')
         df = pd.read_csv(file_path, encoding='latin-1')
     except Exception as e:
+        # Fallback for local testing if Kaggle fails
         return None, None, None, None, None, None, None
 
     df.dropna(subset=['text', 'selected_text'], inplace=True)
@@ -82,15 +87,20 @@ def load_and_preprocess_data():
 
 @st.cache_resource(show_spinner=False)
 def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
+    # Trains the RandomForestClassifier model (NEW MODEL)
+    
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
     
+    # Initialize and train RandomForestClassifier
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
+    
+    # RandomForestClassifier requires dense input for training
     X_train_dense = _X_train.toarray()
     clf.fit(X_train_dense, _y_train_numeric)
     
     joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf_vectorizer.pkl'))
-    joblib.dump(clf, os.path.join(MODEL_DIR, 'random_forest_sentiment_classifier.pkl'))
+    joblib.dump(clf, os.path.join(MODEL_DIR, RANDOM_FOREST_MODEL_NAME))
     
     return clf, _tfidf_vectorizer
 
@@ -98,9 +108,13 @@ def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
 def analyze_sentiment_and_get_data(text, vectorizer, classifier):
     cleaned_text = clean_text_util(text)
     text_vec = vectorizer.transform([cleaned_text])
+    
+    # RandomForestClassifier requires dense input for prediction
     text_vec_dense = text_vec.toarray()
+    
     probabilities = classifier.predict_proba(text_vec_dense)[0]
     
+    # RandomForestClassifier classes might not be sorted 0, 1, 2, so we rely on classifier.classes_
     sentiment_data = {}
     for i, label_id in enumerate(classifier.classes_):
         label_name = reverse_sentiment_mapping.get(label_id, f'Unknown_{label_id}')
@@ -124,113 +138,122 @@ def generate_wc_image(text):
     img_io.seek(0)
     return Image.open(img_io)
 
+# --- 5. Report Generation Function ---
+def generate_report(text, sentiment_probs, top_sentiment, extractive_sum, abstractive_sum):
+    """Generates a Markdown report string for download."""
+    report_content = io.StringIO()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-# --- 5. Streamlit Application Execution (UI Focus) ---
-st.set_page_config(layout="centered", page_title="Advanced Text Analyzer")
+    report_content.write(f"# Text Analysis Report\n")
+    report_content.write(f"**Date:** {now}\n")
+    report_content.write(f"**Total Characters:** {len(text)}\n\n")
+    report_content.write("---\n")
+    
+    # 1. Sentiment
+    report_content.write("## 1. Sentiment Analysis\n")
+    report_content.write(f"**Predicted Overall Sentiment:** {top_sentiment.upper()}\n")
+    report_content.write("| Sentiment | Probability |\n")
+    report_content.write("| :--- | :--- |\n")
+    for sent, prob in sorted(sentiment_probs.items(), key=lambda item: item[1], reverse=True):
+        report_content.write(f"| {sent.capitalize()} | {prob:.4f} |\n")
+    report_content.write("\n")
+    
+    # 2. Summaries
+    report_content.write("## 2. Text Summarization\n")
+    report_content.write("### Extractive Summary (Key Sentences)\n")
+    report_content.write(f"> {extractive_sum}\n\n")
+    
+    report_content.write("### Abstractive Summary (AI Paraphrase)\n")
+    report_content.write(f"> {abstractive_sum}\n\n")
+    
+    # 3. Original Text
+    report_content.write("---\n")
+    report_content.write("## 3. Original Input Text\n")
+    report_content.write("```\n")
+    report_content.write(text)
+    report_content.write("\n```\n")
 
-# --- UI Styling (Aesthetic Neutral) ---
+    return report_content.getvalue().encode('utf-8')
+
+
+# --- 6. Streamlit Application Execution (UI Focus) ---
+st.set_page_config(layout="centered", page_title="Professional Text Analyzer")
+
+# --- Initialize Session State for Results ---
+if 'analysis_run' not in st.session_state:
+    st.session_state.analysis_run = False
+    st.session_state.input_text = ""
+    st.session_state.sentiment_probs = None
+    st.session_state.top_sentiment = None
+    st.session_state.extractive_sum = None
+    st.session_state.abstractive_sum = None
+    st.session_state.wc_image = None
+    st.session_state.show_sentiment = False
+    st.session_state.show_extractive = False
+    st.session_state.show_abstractive = False
+    st.session_state.show_wordcloud = False
+
+# --- UI Styling (New Theme: Dark Blue & Gold/Teal) ---
 st.markdown(
     """
     <style>
-    /* Aesthetic, Neutral Theme Configuration */
-    /* Adjust these colors for a different neutral palette */
-    :root {
-        --primary-color: #6A6E73; /* Dark Grey/Slate for accent */
-        --secondary-background-color: #F8F8F8; /* Light Grey background for containers */
-        --background-color: #FFFFFF; /* White main background */
-        --text-color: #333333; /* Dark text */
-        --border-color: #DDDDDD; /* Light border */
-    }
-
-    /* Apply custom theme variables */
     .stApp {
-        background-color: var(--background-color);
-        color: var(--text-color);
+        background-color: #F4F7F9; /* Light background */
     }
-    .main .block-container {
-        padding-top: 2.5rem; 
-        padding-bottom: 2.5rem;
+    h1 {
+        color: #1A374D; /* Dark Blue */
+        text-align: center;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #FFD700; /* Gold accent */
     }
-    
-    /* Result 'Card' Style - Soft, rounded, and subtle */
-    .result-card { 
+    .result-box { 
         padding: 20px; 
-        border-radius: 10px; 
-        background-color: var(--secondary-background-color); 
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); /* Soft shadow */
-        margin-bottom: 25px;
-        border: 1px solid var(--border-color);
+        border-radius: 8px; 
+        background: white; 
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
+        margin-top: 15px;
+        border-left: 5px solid #1A374D;
     }
-    
-    /* Input Area Box Style - Clean separation */
-    .input-box {
-        padding: 25px;
-        border-radius: 10px;
-        background-color: #FFFFFF; /* Pure white input section */
-        border: 1px solid var(--border-color);
-        margin-bottom: 30px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
-
-    /* Primary Button Style - Full width for main action, with neutral accent */
+    /* Primary button style (Run Analysis) */
     .stButton>button {
-        background-color: var(--primary-color); 
+        background-color: #1A374D; /* Dark Blue */ 
         color: white; 
-        font-weight: 600;
-        border-radius: 6px;
-        border: none;
-        padding: 12px 20px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-        transition: background-color 0.3s;
+        font-weight: bold;
+        border-radius: 8px;
+        border: 2px solid #FFD700; /* Gold outline */
+        padding: 10px 20px;
+        box-shadow: 0 4px #0F202B; /* Darker shadow for depth */
+        transition: all 0.2s ease;
     }
     .stButton>button:hover {
-        background-color: #5A5E63; /* Slightly darker on hover */
+        background-color: #2D5E7E; 
+        box-shadow: 0 2px #0F202B;
+        top: 2px;
     }
-    
-    /* Secondary/Action Buttons - Lighter look for view/download */
-    .stDownloadButton button, .stButton button[kind="secondary"] {
-        background-color: #EFEFEF !important;
-        color: var(--primary-color) !important;
-        border: 1px solid #CCCCCC !important;
-        box-shadow: none;
-        padding: 8px 15px;
+    /* Secondary buttons (Show/Hide results) */
+    .stDownloadButton>button, .stFormSubmitButton>button, .st-emotion-cache-1c7v8eh .st-emotion-cache-1c7v8eh .st-emotion-cache-1c7v8eh button {
+        background-color: #3399A8 !important; /* Teal */
+        color: white !important;
+        border: 1px solid #1A374D;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
     }
-
-    h1 {
-        font-weight: 700;
-        color: var(--primary-color);
-        margin-bottom: 0.5rem;
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea {
+        border-radius: 6px;
+        border: 1px solid #D3D3D3;
+        padding: 10px;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
     }
-
-    /* Subheadings/Section titles - Clean, understated border */
-    h3 {
-        margin-top: 0;
-        padding-bottom: 5px;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 15px;
-    }
-    
     </style>
     """, unsafe_allow_html=True
 )
 
-# --- Session State Management (Crucial for the "View" buttons) ---
-if 'results_data' not in st.session_state:
-    st.session_state.results_data = {
-        'run_complete': False,
-        'sentiment_probs': None,
-        'top_sentiment': None,
-        'extractive_sum': None,
-        'abstractive_sum': "Run analysis first.",
-        'wordcloud_image': None,
-    }
-
 # --- Initial Backend Setup (Silent) ---
+# Use st.session_state to hold the model and vectorizer for persistence
 if 'clf' not in st.session_state or 'tfidf_vectorizer' not in st.session_state:
     df, tfidf_vectorizer_init, X_train, y_train_numeric, _, _, _ = load_and_preprocess_data()
 
     if df is None:
-        st.error("Setup failed: Could not load ML data. Check your Kaggle API setup or data file path.")
+        st.error("Setup failed: Could not load ML data. Check your dependencies or data source.")
         st.stop()
 
     clf, tfidf_vectorizer = train_and_save_models(_X_train=X_train, _y_train_numeric=y_train_numeric, _tfidf_vectorizer=tfidf_vectorizer_init)
@@ -242,165 +265,160 @@ else:
 
 
 # --- Main Streamlit Interface ---
-st.title("Advanced Text Analysis Platform")
-st.caption("A tool developed by Lahari Reddy. Input data, analyze, and view the integrated ML and NLP results.")
+st.title("Professional Text Analysis Dashboard")
+st.markdown("### 1. Input & Execution")
 
-st.markdown("---")
-
-# --- 1. Input Section ---
-st.header("1. Data Input")
-
-st.markdown('<div class="input-box">', unsafe_allow_html=True)
+# --- Input Area ---
 with st.form(key='analysis_form'):
     col_a, col_b = st.columns([3,1])
     
-    if 'default_text_input' not in st.session_state: st.session_state.default_text_input = ""
-
     with col_a:
         text_input = st.text_area(
-            "Text Payload:", 
+            "Paste Text Here:", 
             height=200, 
-            placeholder="Paste text for analysis here...",
-            value=st.session_state.default_text_input
+            placeholder="Enter the text you wish to analyze...",
+            value=st.session_state.input_text
         )
 
     with col_b:
-        st.markdown("##### Load Option")
-        uploaded = st.file_uploader("Upload .txt File:", type=["txt"])
+        uploaded = st.file_uploader("Or Upload File (.txt):", type=["txt"])
         
         if uploaded is not None:
             try:
                 file_text = uploaded.read().decode("utf-8", errors='ignore')
                 text_input = file_text
-                st.session_state.default_text_input = file_text
-                st.toast("File loaded successfully.", icon='✅')
+                st.session_state.input_text = file_text
+                st.toast("File loaded. Ready to analyze.", icon='📄')
             except Exception as e:
                 st.error(f"File Read Error: {e}")
         
-    st.markdown("---")
-    # This is the single button that triggers the full pipeline
-    run = st.form_submit_button("▶️ Run Complete Analysis", type="primary", use_container_width=True)
+    run = st.form_submit_button("▶️ RUN FULL ANALYSIS", type="primary", use_container_width=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-
-# --- 2. Analysis Execution ---
+# --- ANALYSIS EXECUTION ---
 if run:
     if not text_input or not text_input.strip():
-        st.session_state.results_data['run_complete'] = False
-        st.warning("Please input text or upload a file to run the analysis.")
+        st.error("🚨 Please provide text to analyze.")
+        st.session_state.analysis_run = False
     else:
-        st.session_state.default_text_input = text_input 
+        st.session_state.input_text = text_input
+        st.session_state.show_sentiment = True # Show first result by default
         
-        # --- EXECUTE ALL ANALYSES AND STORE IN SESSION STATE ---
-        with st.spinner("Processing data through ML/NLP pipeline..."):
-            
-            # Sentiment
+        with st.spinner("Processing all analyses..."):
+            # 1. Sentiment Analysis
             sentiment_probs, top_sentiment = analyze_sentiment_and_get_data(text_input, tfidf_vectorizer, clf)
+            st.session_state.sentiment_probs = sentiment_probs
+            st.session_state.top_sentiment = top_sentiment
             
-            # Summarization
-            extractive_sum = extractive_reduce(text_input)
+            # 2. Extractive Summary
+            st.session_state.extractive_sum = extractive_reduce(text_input)
+
+            # 3. Abstractive Summary
             try:
-                abstractive_sum = abstractive_summarize_text(text_input, model_name="t5-small")
+                st.session_state.abstractive_sum = abstractive_summarize_text(text_input, model_name="t5-small")
             except Exception as e:
                 error_text = str(e)
-                if "Keras 3" in error_text or "tf-keras" in error_text:
-                    abstractive_sum = "Abstractive Model Failed: Dependency error (tf-keras/Keras 3 issue)."
+                if "Keras 3" in error_text or "tf-keras" in error_text or "No module named 'tf_keras'" in error_text:
+                     st.session_state.abstractive_sum = f"Abstractive model failed: Dependency error detected. Run 'pip install tf-keras' to resolve the Keras 3/Transformers compatibility issue. Full Error: {error_text}"
                 else:
-                    abstractive_sum = f"Abstractive Model Failed: {error_text[:60]}..."
-
-            # Word Cloud
-            wc_image = generate_wc_image(text_input)
-
-            # Store results
-            st.session_state.results_data.update({
-                'run_complete': True,
-                'sentiment_probs': sentiment_probs,
-                'top_sentiment': top_sentiment,
-                'extractive_sum': extractive_sum,
-                'abstractive_sum': abstractive_sum,
-                'wordcloud_image': wc_image,
-            })
+                    st.session_state.abstractive_sum = f"Abstractive model failed: {error_text}"
             
-        st.success("✅ Analysis Complete! See Section 2 for results.")
-        st.balloons()
+            # 4. Word Cloud
+            st.session_state.wc_image = generate_wc_image(text_input)
+            
+        st.session_state.analysis_run = True
+        st.success("✅ Analysis Complete! Use the buttons below to view results.")
 
-
-# --- 3. Results Section (Action-Driven) ---
-st.header("2. Analysis Results")
-st.caption("Click the buttons below to view the detailed output for each analysis.")
-
-# Use columns for action buttons
-col1, col2, col3, col4 = st.columns(4)
-
-if st.session_state.results_data['run_complete']:
+# --- RESULTS DISPLAY ---
+if st.session_state.analysis_run:
+    st.markdown("---")
+    st.markdown("### 2. View Results & Report")
     
-    # --- Action Buttons ---
-    sentiment_button = col1.button("View Sentiment 📈", key="view_sent")
-    summary_button = col2.button("View Summaries ✂️", key="view_sum")
-    wordcloud_button = col3.button("View Word Cloud 🖼️", key="view_wc")
+    # 2.1 Display Control Buttons
+    col1, col2, col3, col4, col5 = st.columns([1,1,1,1,1])
     
-    # Placeholder for Download Button
-    download_button = col4.button("Download Report 📄", key="download_report")
-    
-    # --- Action Logic ---
-    st.markdown('<div class="result-card">', unsafe_allow_html=True)
-
-    if sentiment_button:
-        st.subheader("Sentiment Classification (Random Forest)")
-        sentiment_probs = st.session_state.results_data['sentiment_probs']
-        top_sentiment = st.session_state.results_data['top_sentiment']
-
-        st.markdown(f"**Primary Classification:** <span style='font-size: 1.2em; font-weight: bold;'>{top_sentiment.upper()}</span>", unsafe_allow_html=True)
+    # Sentiment Button
+    if col1.button("📊 Sentiment", help="Show/Hide Sentiment Analysis"):
+        st.session_state.show_sentiment = not st.session_state.show_sentiment
         
-        # Bar Chart Visualization
+    # Extractive Button
+    if col2.button("✂️ Extractive Sum.", help="Show/Hide Extractive Summary"):
+        st.session_state.show_extractive = not st.session_state.show_extractive
+        
+    # Abstractive Button
+    if col3.button("🧠 Abstractive Sum.", help="Show/Hide Abstractive Summary"):
+        st.session_state.show_abstractive = not st.session_state.show_abstractive
+        
+    # Word Cloud Button
+    if col4.button("☁️ Word Cloud", help="Show/Hide Word Cloud Visualization"):
+        st.session_state.show_wordcloud = not st.session_state.show_wordcloud
+        
+    # PDF Download Button
+    report_data = generate_report(
+        st.session_state.input_text,
+        st.session_state.sentiment_probs,
+        st.session_state.top_sentiment,
+        st.session_state.extractive_sum,
+        st.session_state.abstractive_sum
+    )
+    col5.download_button(
+        label="⬇️ Download Report (PDF/MD)",
+        data=report_data,
+        file_name="text_analysis_report.md",
+        mime="text/markdown",
+        help="Download the full analysis as a Markdown file, which can be printed to PDF."
+    )
+        
+    st.markdown('<div class="result-box">', unsafe_allow_html=True)
+    
+    # 2.2 Individual Result Rendering Sections
+    
+    # --- Sentiment Analysis ---
+    if st.session_state.show_sentiment:
+        st.subheader("📊 Sentiment Analysis Results") 
+        sentiment_probs = st.session_state.sentiment_probs
+        top_sentiment = st.session_state.top_sentiment
+        
+        st.markdown(f"#### Predicted Overall Sentiment: **{top_sentiment.upper()}**")
+        
         sentiment_df = pd.DataFrame({
             'Sentiment': list(sentiment_probs.keys()),
             'Probability': list(sentiment_probs.values())
         })
-        order = ['positive', 'neutral', 'negative']
-        sentiment_df = sentiment_df.set_index('Sentiment').reindex(order).reset_index()
-
         color_map = {'negative': '#EF5350', 'neutral': '#FFEE58', 'positive': '#66BB6A'}
         sentiment_df['Color'] = sentiment_df['Sentiment'].map(color_map)
 
-        fig, ax = plt.subplots(figsize=(6, 3.5)) 
-        ax.bar(
+        # Plot the bar chart
+        fig, ax = plt.subplots(figsize=(6, 3))
+        bars = ax.bar(
             sentiment_df['Sentiment'], 
             sentiment_df['Probability'], 
             color=sentiment_df['Color'].tolist(),
-            width=0.5
+            width=0.45
         )
-        ax.set_title('Probability Distribution', fontsize=12, color=st.get_option("theme.text_color"))
+        ax.set_title('Sentiment Probability Distribution', fontsize=10)
         ax.set_ylim(0, 1.05)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
         st.pyplot(fig)
         
-    elif summary_button:
-        st.subheader("Text Summarization Results")
-        col_ext, col_abs = st.columns(2)
-        
-        with col_ext:
-            st.markdown("##### Extractive Summary (Key Sentence Extraction)")
-            st.code(st.session_state.results_data['extractive_sum'], language='text')
+    
+    # --- Extractive Summary ---
+    if st.session_state.show_extractive:
+        if st.session_state.show_sentiment: st.markdown("---")
+        st.subheader("✂️ Extractive Summary (Key Sentences)")
+        st.info(st.session_state.extractive_sum)
 
-        with col_abs:
-            st.markdown("##### Abstractive Summary (T5 Model Output)") 
-            st.code(st.session_state.results_data['abstractive_sum'], language='text')
+    # --- Abstractive Summary ---
+    if st.session_state.show_abstractive:
+        if st.session_state.show_sentiment or st.session_state.show_extractive: st.markdown("---")
+        st.subheader("🧠 Abstractive Summary (AI Paraphrase)")
+        if "Abstractive model failed" in st.session_state.abstractive_sum:
+            st.error(st.session_state.abstractive_sum)
+        else:
+            st.info(st.session_state.abstractive_sum)
 
-    elif wordcloud_button:
-        st.subheader("Keyword Visualization (Word Cloud)")
-        st.image(st.session_state.results_data['wordcloud_image'], caption='Term Frequency Map', use_column_width=True)
-
-    elif download_button:
-        st.subheader("Report Download Placeholder")
-        st.info("The 'Download Report' functionality would be implemented here, generating a PDF or structured JSON/CSV file from the stored session state data.")
-        st.code("def generate_pdf_report(data):\n    # Implementation using libraries like FPDF or ReportLab\n    pass", language="python")
-
-    else:
-        st.info("Click a button above to display the analysis output.")
+    # --- Word Cloud ---
+    if st.session_state.show_wordcloud:
+        if st.session_state.show_sentiment or st.session_state.show_extractive or st.session_state.show_abstractive: st.markdown("---")
+        st.subheader("☁️ Word Cloud Visualization")
+        st.image(st.session_state.wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
         
     st.markdown('</div>', unsafe_allow_html=True)
-else:
-    st.info("Run the analysis pipeline in Section 1 to generate results.")
