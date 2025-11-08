@@ -196,10 +196,7 @@ if 'analysis_run' not in st.session_state:
     st.session_state.extractive_sum = None
     st.session_state.abstractive_sum = None
     st.session_state.wc_image = None
-    st.session_state.show_sentiment = True 
-    st.session_state.show_extractive = False
-    st.session_state.show_abstractive = False
-    st.session_state.show_wordcloud = False
+    st.session_state.active_view = None # Stores the key of the currently active view ('sentiment', 'wordcloud', etc.)
 
 # --- UI Styling (High Contrast Dark Theme) ---
 st.markdown(
@@ -243,14 +240,6 @@ st.markdown(
         box-shadow: none !important;
         font-weight: normal;
         margin: 5px 2px;
-    }
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea {
-        background-color: #1E1E1E; /* Dark input background */
-        color: #E0E0E0;
-        border-radius: 6px;
-        border: 1px solid #333333;
-        padding: 10px;
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
     }
     /* Streamlit's st.info box (for summaries) */
     div[data-testid="stText"] {
@@ -324,7 +313,8 @@ if run:
         st.session_state.analysis_run = False
     else:
         st.session_state.input_text = text_input
-        st.session_state.show_sentiment = True # Show first result by default
+        # KEY FIX 1: Ensure no view is active upon starting the analysis
+        st.session_state.active_view = None
         
         with st.spinner("Processing all analyses..."):
             # 1. Sentiment Analysis
@@ -350,6 +340,14 @@ if run:
         st.session_state.analysis_run = True
         st.success("✅ Analysis Complete! Use the buttons below to view results.")
 
+# --- Results Toggle Logic ---
+def set_active_view(view_key):
+    """Sets the active view key, toggling off if already active."""
+    if st.session_state.active_view == view_key:
+        st.session_state.active_view = None
+    else:
+        st.session_state.active_view = view_key
+        
 # --- RESULTS DISPLAY ---
 if st.session_state.analysis_run:
     st.markdown("### 2. Analysis Report")
@@ -357,25 +355,21 @@ if st.session_state.analysis_run:
     # 2.1 Display Control Buttons
     col1, col2, col3, col4, col5 = st.columns([1,1,1,1,1.2])
     
-    # Helper to toggle state
-    def toggle_state(key):
-        st.session_state[key] = not st.session_state[key]
-
     # Sentiment Button
     if col1.button("📊 Sentiment", key="btn_sent"):
-        toggle_state('show_sentiment')
+        set_active_view('sentiment')
         
     # Extractive Button
     if col2.button("🔑 Key Insights", key="btn_ext"):
-        toggle_state('show_extractive')
+        set_active_view('extractive')
         
     # Abstractive Button
     if col3.button("🧠 Abstractive", key="btn_abs"):
-        toggle_state('show_abstractive')
+        set_active_view('abstractive')
         
     # Word Cloud Button
     if col4.button("☁️ Word Cloud", key="btn_wc"):
-        toggle_state('show_wordcloud')
+        set_active_view('wordcloud')
         
     # PDF Download Button
     report_data = generate_report(
@@ -396,8 +390,10 @@ if st.session_state.analysis_run:
     # 2.2 Individual Result Rendering Sections
     st.markdown('<div class="result-box">', unsafe_allow_html=True)
     
+    active_view = st.session_state.active_view
+
     # --- Sentiment Analysis ---
-    if st.session_state.show_sentiment:
+    if active_view == 'sentiment':
         st.subheader("📊 Sentiment Analysis Results") 
         sentiment_probs = st.session_state.sentiment_probs
         top_sentiment = st.session_state.top_sentiment
@@ -432,7 +428,7 @@ if st.session_state.analysis_run:
         st.pyplot(fig)
     
     # --- Key Insights (Short Abstractive Reduction) ---
-    if st.session_state.show_extractive:
+    elif active_view == 'extractive':
         st.subheader("🔑 Key Insights (Short Abstractive Reduction)")
         if st.session_state.extractive_sum.startswith("KEY INSIGHTS FAILED") or "Transformer model failed" in st.session_state.extractive_sum:
             st.error(st.session_state.extractive_sum)
@@ -440,7 +436,7 @@ if st.session_state.analysis_run:
             st.info(st.session_state.extractive_sum)
 
     # --- Abstractive Summary ---
-    if st.session_state.show_abstractive:
+    elif active_view == 'abstractive':
         st.subheader("🧠 Detailed Abstract (Abstractive Summary)")
         if st.session_state.abstractive_sum.startswith("ABSTRACTIVE SUMMARY FAILED") or "Transformer model failed" in st.session_state.abstractive_sum:
             st.error(st.session_state.abstractive_sum)
@@ -448,11 +444,11 @@ if st.session_state.analysis_run:
             st.info(st.session_state.abstractive_sum)
 
     # --- Word Cloud ---
-    if st.session_state.show_wordcloud:
+    elif active_view == 'wordcloud':
         st.subheader("☁️ Word Cloud Visualization")
         st.image(st.session_state.wc_image, caption='Word Frequency Cloud (Processed Text)', use_column_width=True)
         
-    if not (st.session_state.show_sentiment or st.session_state.show_extractive or st.session_state.show_abstractive or st.session_state.show_wordcloud):
+    else:
          st.info("Click a toggle button above to display the analysis results.")
 
     st.markdown('</div>', unsafe_allow_html=True)
