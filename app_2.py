@@ -119,15 +119,17 @@ def load_and_preprocess_data():
     y_train_num = pd.Series(y_train).map(sentiment_mapping).astype(int)
     return df, vec, X_train, y_train_num, X, X_test, y_test
 
+# --- Model Training (fixed cache issue) ---
 @st.cache_resource
-def train_and_save_models(X_train, y_train_num, vec):
+def train_and_save_models(_X_train, _y_train_num, _vec):
     if not os.path.exists(MODEL_DIR): os.makedirs(MODEL_DIR)
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-    clf.fit(X_train.toarray(), y_train_num)
+    clf.fit(_X_train.toarray(), _y_train_num)
     joblib.dump(clf, os.path.join(MODEL_DIR, 'rf_sentiment.pkl'))
-    joblib.dump(vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
-    return clf, vec
+    joblib.dump(_vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
+    return clf, _vec
 
+# --- Utility Functions ---
 def analyze_sentiment(text, vec, clf):
     clean_t = clean_text_util(text)
     X = vec.transform([clean_t]).toarray()
@@ -140,7 +142,9 @@ def generate_wc(text):
     clean_t = clean_text_util(text)
     freq = pd.Series(clean_t.split()).value_counts().to_dict()
     wc = WordCloud(width=350, height=180, background_color='white', colormap='cool').generate_from_frequencies(freq)
-    img_io = io.BytesIO(); wc.to_image().save(img_io, 'PNG'); img_io.seek(0)
+    img_io = io.BytesIO()
+    wc.to_image().save(img_io, 'PNG')
+    img_io.seek(0)
     return Image.open(img_io)
 
 # --- Model Load ---
