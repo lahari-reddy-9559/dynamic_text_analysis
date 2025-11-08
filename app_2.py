@@ -162,16 +162,32 @@ with col4:
 
 st.markdown("---")
 
+# --- Main Logic ---
 if text_input.strip():
     if choice == "sentiment":
         st.subheader("🧠 Sentiment Analysis")
         data, top = analyze_sentiment(text_input, vec, clf)
         st.success(f"Predicted Sentiment: **{top.upper()}**")
+
+        # --- Compact Bar Chart (Improved Design) ---
         df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
         color_map = {'negative': '#EF5350', 'neutral': '#FFD54F', 'positive': '#66BB6A'}
-        fig, ax = plt.subplots(figsize=(5,3))
-        ax.bar(df_s["Sentiment"], df_s["Probability"], color=[color_map[s] for s in df_s["Sentiment"]])
-        ax.set_ylim(0, 1.05); ax.set_title("Sentiment Confidence Levels")
+        fig, ax = plt.subplots(figsize=(5, 3))  # smaller, compact
+        bars = ax.bar(df_s["Sentiment"], df_s["Probability"],
+                      color=[color_map[s] for s in df_s["Sentiment"]],
+                      width=0.4, edgecolor='gray')
+
+        ax.set_ylim(0, 1.05)
+        ax.set_title("Sentiment Confidence Levels", fontsize=10, pad=10)
+        ax.set_xlabel("Sentiment", fontsize=8)
+        ax.set_ylabel("Probability", fontsize=8)
+        ax.grid(axis='y', linestyle='--', alpha=0.4)
+
+        # Remove unnecessary borders for cleaner look
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+
+        plt.tight_layout()
         st.pyplot(fig)
 
     elif choice == "extractive":
@@ -190,8 +206,7 @@ if text_input.strip():
         wc_img = generate_wc(text_input)
         st.image(wc_img, caption="Word Frequency Cloud", use_column_width=True)
 
-# --- PDF Download ---
-if text_input.strip():
+    # --- PDF Download Section ---
     if st.button("📥 Download Full Report (PDF)"):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -203,22 +218,31 @@ if text_input.strip():
             Paragraph(text_input[:1000] + ("..." if len(text_input) > 1000 else ""), styles["Normal"]),
             Spacer(1, 12)
         ]
+
+        # Sentiment
         data, top = analyze_sentiment(text_input, vec, clf)
         elements.append(Paragraph("Predicted Sentiment:", styles["Heading2"]))
         elements.append(Paragraph(str(top).upper(), styles["Normal"]))
         elements.append(Spacer(1, 12))
+
+        # Extractive summary
         elements.append(Paragraph("Extractive Summary:", styles["Heading2"]))
         elements.append(Paragraph(extractive_reduce(text_input), styles["Normal"]))
+
+        # Abstractive summary (optional)
         try:
             elements.append(Spacer(1, 12))
             elements.append(Paragraph("Abstractive Summary:", styles["Heading2"]))
             elements.append(Paragraph(abstractive_summarize_text(text_input), styles["Normal"]))
         except:
             pass
+
+        # Word cloud
         img_path = "wordcloud_temp.png"
         generate_wc(text_input).save(img_path)
         elements.append(Spacer(1, 12))
         elements.append(RLImage(img_path, width=5*inch, height=3*inch))
+
         doc.build(elements)
         st.download_button("⬇️ Save PDF Report", data=buffer.getvalue(),
                            file_name="Text_Insight_Report.pdf",
