@@ -6,6 +6,7 @@ matplotlib
 scikit-learn
 joblib
 reportlab
+textblob
 # Data source requirement
 kagglehub
 
@@ -25,4 +26,5 @@ transformers
 
 # Fix for Keras 3/Transformers compatibility issue (CRITICAL FIX)
 tf-keras
+
 
