@@ -1,4 +1,4 @@
-# app.py — Lahari Reddy | Compact, Dark-Mode Adaptive (500x300 px visuals)
+# app.py — Lahari Reddy | Neutral Palette + Animated Background + Compact 500x300 visuals
 
 import kagglehub
 import os
@@ -24,7 +24,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 
-# --- Summarization Utils (unchanged) ---
+# --- Summarization utilities (unchanged) ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
@@ -40,41 +40,59 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- Streamlit Config ---
-st.set_page_config(
-    page_title="Text Insight Studio | Lahari Reddy",
-    layout="wide",
-    page_icon="💬"
-)
+# --- Streamlit page config ---
+st.set_page_config(page_title="Text Insight Studio | Lahari Reddy", layout="wide", page_icon="💬")
 
-# --- Visual theme (keeps previous look but we'll adapt plots to streamlit theme) ---
-st.markdown("""
-<style>
-body {
-    background: linear-gradient(135deg, #FDEFF9 0%, #ECF4FF 50%, #E8F9F0 100%);
-    font-family: 'Poppins', sans-serif;
-}
-div.block-container {
-    padding-top: 1.6rem;
-    background-color: rgba(255, 255, 255, 0.94);
-    border-radius: 14px;
-    padding: 20px 24px;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.06);
-}
-h1, h2, h3 {
-    color: #4B0082;
-    font-weight: 600;
-}
-.stButton>button {
-    background: linear-gradient(90deg, #6C63FF, #00BFA6);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    padding: 0.5em 1.0em;
-}
-</style>
-""", unsafe_allow_html=True)
+# --- Neutral animated background + neutral card styles (same in light/dark) ---
+st.markdown(
+    """
+    <style>
+    /* Animated neutral gradient background (subtle) */
+    @keyframes subtleGradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .stApp {
+      background: linear-gradient(120deg, #eef2f7 0%, #f6fbff 35%, #eef6f4 65%, #f7f7fb 100%);
+      background-size: 300% 300%;
+      animation: subtleGradient 18s ease infinite;
+      color: #222831;
+      font-family: "Poppins", sans-serif;
+    }
+
+    /* Card container inside Streamlit */
+    .block-container {
+      background: rgba(255,255,255,0.88); 
+      border-radius: 14px;
+      padding: 22px 26px;
+      box-shadow: 0 6px 24px rgba(34,40,49,0.06);
+    }
+
+    h1, h2, h3 { color: #2b2f36; font-weight:600; }
+    .stButton>button {
+      background: linear-gradient(90deg, #708090, #88bdb6);
+      color: #ffffff;
+      border-radius: 8px;
+      border: none;
+      padding: 8px 14px;
+      font-weight:600;
+    }
+    /* Small subtle hover */
+    .stButton>button:hover { transform: translateY(-1px); transition: .18s ease; }
+
+    /* Smaller file uploader + textarea aesthetic */
+    textarea[role="textbox"] { border-radius: 10px !important; }
+    .stFileUploader { border-radius: 10px !important; }
+
+    /* Make the download button visually clear */
+    .stDownloadButton>button { background: linear-gradient(90deg,#6b7280,#4b9ea9); color: white; border-radius: 8px; padding:8px 12px; }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # -------------------------
 # Data Loading & Preprocess
@@ -127,18 +145,6 @@ def train_and_save_models(_X_train, _y_train_num, _vec):
     return clf, _vec
 
 # -------------------------
-# Theme detection helper
-# -------------------------
-def is_streamlit_dark():
-    """Return True if Streamlit theme is dark; fallback False."""
-    try:
-        base = st.get_option("theme.base")
-        return base == "dark"
-    except Exception:
-        # if option not present, try reading runtime theme color - fallback light
-        return False
-
-# -------------------------
 # Utility functions
 # -------------------------
 def analyze_sentiment(text, vec, clf):
@@ -149,63 +155,53 @@ def analyze_sentiment(text, vec, clf):
     top = reverse_sentiment_mapping[clf.classes_[np.argmax(probs)]]
     return results, top
 
-def generate_wc_image(text, dark_mode=False):
-    """Return PIL Image of WordCloud sized 500x300 pixels."""
+def generate_wc_image_neutral(text):
+    """Return PIL Image of WordCloud sized 500x300 pixels using neutral palette."""
     clean_t = clean_text_util(text)
     if not clean_t:
-        # Empty white/black image based on mode
-        bg = "black" if dark_mode else "white"
-        im = Image.new("RGB", (500, 300), color=bg)
-        return im
+        return Image.new("RGB", (500, 300), color="#f4f6f8")  # neutral light background
 
-    # WordCloud with exact pixel dimensions
-    wc = WordCloud(width=500, height=300,
-                   background_color="black" if dark_mode else "white",
-                   colormap="plasma" if dark_mode else "viridis",
-                   max_words=150).generate(clean_t)
+    wc = WordCloud(
+        width=500,
+        height=300,
+        background_color="#f4f6f8",  # neutral light grayish
+        colormap="cividis",          # neutral, readable palette
+        max_words=150,
+        prefer_horizontal=0.9
+    ).generate(clean_t)
+    return wc.to_image()
 
-    img = wc.to_image()  # PIL image at 500x300
-    return img
-
-def plot_compact_bar(sentiment_dict, dark_mode=False):
+def plot_compact_bar_neutral(sentiment_dict):
     """
-    Create a compact bar chart sized 500x300 px (figsize 5x3 at dpi=100).
+    Create a compact neutral bar chart sized 500x300 px (figsize 5x3 at dpi=100).
     Returns the matplotlib Figure.
     """
     labels = list(sentiment_dict.keys())
     vals = [sentiment_dict[k] for k in labels]
 
-    # Theme-aware colors
-    if dark_mode:
-        bg = "#0b0f14"
-        text_color = "white"
-        bar_colors = ['#FF6B6B', '#FFD166', '#06D6A0']  # vivid on dark
-    else:
-        bg = "white"
-        text_color = "#222222"
-        bar_colors = ['#F87171', '#FACC15', '#34D399']
+    # Neutral color set with good contrast on both themes
+    bar_colors = ['#6b7280', '#9aa5a6', '#4b9ea9']  # slate, muted sea, teal-ish
 
     fig, ax = plt.subplots(figsize=(5, 3), dpi=100)  # 500x300 px
-    bars = ax.bar(labels, vals, color=bar_colors[:len(labels)], width=0.35, edgecolor='gray')
+    bars = ax.bar(labels, vals, color=bar_colors[:len(labels)], width=0.35, edgecolor='#d1d5db')
 
-    # Axis, title, grid
+    # Appearance
     ax.set_ylim(0, 1.05)
-    ax.set_title("Sentiment Confidence", fontsize=10, color=text_color, pad=6)
-    ax.set_ylabel("Probability", color=text_color, fontsize=9)
-    ax.set_xlabel("", color=text_color)
-    ax.grid(axis='y', linestyle='--', alpha=0.35)
+    ax.set_title("Sentiment Confidence", fontsize=10, color="#1f2937", pad=6)
+    ax.set_ylabel("Probability", color="#374151", fontsize=9)
+    ax.set_xlabel("")
+    ax.grid(axis='y', linestyle='--', alpha=0.25)
 
-    # Theme background colors
-    fig.patch.set_facecolor(bg)
-    ax.set_facecolor(bg)
+    # Neutral background matching the app card look
+    fig.patch.set_facecolor("#f9fafb")
+    ax.set_facecolor("#f9fafb")
 
-    # Tick colors
-    ax.tick_params(colors=text_color, which='both')
+    # Ticks and labels
+    ax.tick_params(colors="#374151", which='both')
     for spine in ['top', 'right']:
         ax.spines[spine].set_visible(False)
-    # adjust label fonts
-    plt.setp(ax.get_xticklabels(), fontsize=9, color=text_color)
-    plt.setp(ax.get_yticklabels(), fontsize=8, color=text_color)
+    plt.setp(ax.get_xticklabels(), fontsize=9, color="#374151")
+    plt.setp(ax.get_yticklabels(), fontsize=8, color="#374151")
 
     plt.tight_layout()
     return fig
@@ -229,7 +225,7 @@ vec = st.session_state.vec
 # UI Header
 # -------------------------
 st.title("💬 Text Insight Studio")
-st.caption("Developed by **Lahari Reddy** — Compact visuals, dark-mode adaptive, professional look ✨")
+st.caption("Developed by **Lahari Reddy** — Neutral palette, compact visuals, subtle animated background ✨")
 
 # Input area
 text_input = st.text_area("📝 Enter Text:", placeholder="Paste or type text to analyze...", height=160)
@@ -253,8 +249,6 @@ for (label, val), col in zip(buttons, cols):
 
 st.markdown("---")
 
-dark_mode = is_streamlit_dark()
-
 # -------------------------
 # Main Logic: center visuals
 # -------------------------
@@ -264,8 +258,8 @@ if text_input and text_input.strip():
         sentiment_probs, top_sent = analyze_sentiment(text_input, vec, clf)
         st.success(f"Predicted Sentiment: **{top_sent.upper()}**")
 
-        # Create bar figure
-        fig = plot_compact_bar(sentiment_probs, dark_mode=dark_mode)
+        # Create neutral bar figure
+        fig = plot_compact_bar_neutral(sentiment_probs)
 
         # Center the plot using columns (left spacer, center, right spacer)
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -285,14 +279,14 @@ if text_input and text_input.strip():
 
     elif choice == "wordcloud":
         st.subheader("☁️ Word Cloud Visualization")
-        wc_img = generate_wc_image(text_input, dark_mode=dark_mode)
+        wc_img = generate_wc_image_neutral(text_input)
 
         # Center the image using columns and show at exact size 500x300 px
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.image(wc_img, use_column_width=False, width=500)
 
-    # PDF generation (small/compact visuals)
+    # PDF generation (compact visuals)
     if st.button("📥 Download Full Report (PDF)"):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -325,10 +319,10 @@ if text_input and text_input.strip():
             pass
 
         # Wordcloud image for PDF (500x300)
-        wc_img = generate_wc_image(text_input, dark_mode=dark_mode)
-        img_path = "wordcloud_500x300.png"
+        wc_img = generate_wc_image_neutral(text_input)
+        img_path = "wordcloud_neutral_500x300.png"
         wc_img.save(img_path)
-        elements.append(RLImage(img_path, width=5.0*inch, height=3.0*inch))  # keep aspect for PDF
+        elements.append(RLImage(img_path, width=5.0*inch, height=3.0*inch))
         elements.append(Spacer(1, 8))
 
         doc.build(elements)
