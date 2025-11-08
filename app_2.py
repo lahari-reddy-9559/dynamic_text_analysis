@@ -1,3 +1,5 @@
+# app.py — Lahari Reddy | Compact Beautiful Version 🌈
+
 import kagglehub
 import os
 import pandas as pd
@@ -22,11 +24,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import inch
 
-# --- Import Summarization Utilities ---
+# --- Summarization Utils ---
 try:
     from summarization_utils import clean_text as clean_text_util, extractive_reduce, abstractive_summarize_text
 except ImportError:
-    st.error("❌ Could not find summarization_utils.py. Please ensure it's in the same directory.")
+    st.error("❌ Could not find summarization_utils.py.")
     st.stop()
 
 warnings.filterwarnings("ignore")
@@ -38,45 +40,55 @@ reverse_sentiment_mapping = {v: k for k, v in sentiment_mapping.items()}
 MAX_FEATURES = 5000
 RANDOM_STATE = 42
 
-# --- Streamlit Configuration ---
+# --- Streamlit Config ---
 st.set_page_config(
     page_title="Text Insight Studio | Lahari Reddy",
     layout="wide",
     page_icon="💬"
 )
 
-# --- Custom Theme ---
+# --- 🌸 Custom Theme + Background Gradient ---
 st.markdown("""
 <style>
-:root {
-    --primary-color: #6C63FF;
-    --accent-color: #00BFA6;
-    --background-color: #F7F9FB;
-    --secondary-background-color: #FFFFFF;
-    --text-color: #2D2D2D;
+body {
+    background: linear-gradient(135deg, #e3f2fd 0%, #ede7f6 100%);
+    font-family: 'Poppins', sans-serif;
 }
-body { background-color: var(--background-color); color: var(--text-color); }
-h1, h2, h3, h4 { color: var(--primary-color); font-family: 'Poppins', sans-serif; }
+div.block-container {
+    padding-top: 2rem;
+    background-color: rgba(255, 255, 255, 0.85);
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.1);
+}
+h1, h2, h3 {
+    color: #4B0082;
+    font-weight: 600;
+}
 .stButton>button {
-    background: var(--primary-color);
+    background: linear-gradient(90deg, #6C63FF, #00BFA6);
     color: white;
-    border-radius: 8px;
     border: none;
-    padding: 0.6em 1.5em;
+    border-radius: 8px;
     font-weight: bold;
+    padding: 0.6em 1.3em;
+    transition: 0.3s;
 }
-.stButton>button:hover { background: var(--accent-color); transition: 0.3s; }
+.stButton>button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(90deg, #00BFA6, #6C63FF);
+}
 .result-box {
-    background: var(--secondary-background-color);
-    padding: 20px;
+    background: rgba(255, 255, 255, 0.85);
     border-radius: 10px;
-    box-shadow: 0px 3px 15px rgba(0,0,0,0.1);
+    padding: 15px;
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.1);
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Data Preprocessing ---
-@st.cache_data(show_spinner="Loading data and preparing models...")
+# --- Data Loading ---
+@st.cache_data(show_spinner="📦 Loading dataset & models...")
 def load_and_preprocess_data():
     try:
         path = kagglehub.dataset_download("abhi8923shriv/sentiment-analysis-dataset")
@@ -107,14 +119,14 @@ def load_and_preprocess_data():
     y_train_num = pd.Series(y_train).map(sentiment_mapping).astype(int)
     return df, vec, X_train, y_train_num, X, X_test, y_test
 
-@st.cache_resource(show_spinner=False)
-def train_and_save_models(_X_train, _y_train_numeric, _tfidf_vectorizer):
+@st.cache_resource
+def train_and_save_models(X_train, y_train_num, vec):
     if not os.path.exists(MODEL_DIR): os.makedirs(MODEL_DIR)
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-    clf.fit(_X_train.toarray(), _y_train_numeric)
+    clf.fit(X_train.toarray(), y_train_num)
     joblib.dump(clf, os.path.join(MODEL_DIR, 'rf_sentiment.pkl'))
-    joblib.dump(_tfidf_vectorizer, os.path.join(MODEL_DIR, 'tfidf.pkl'))
-    return clf, _tfidf_vectorizer
+    joblib.dump(vec, os.path.join(MODEL_DIR, 'tfidf.pkl'))
+    return clf, vec
 
 def analyze_sentiment(text, vec, clf):
     clean_t = clean_text_util(text)
@@ -127,11 +139,11 @@ def analyze_sentiment(text, vec, clf):
 def generate_wc(text):
     clean_t = clean_text_util(text)
     freq = pd.Series(clean_t.split()).value_counts().to_dict()
-    wc = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(freq)
+    wc = WordCloud(width=400, height=200, background_color='white').generate_from_frequencies(freq)
     img_io = io.BytesIO(); wc.to_image().save(img_io, 'PNG'); img_io.seek(0)
     return Image.open(img_io)
 
-# --- Load model (once) ---
+# --- Model Load ---
 if 'clf' not in st.session_state:
     df, vec, X_train, y_train_num, _, _, _ = load_and_preprocess_data()
     clf, tfidf = train_and_save_models(X_train, y_train_num, vec)
@@ -140,25 +152,27 @@ clf, vec = st.session_state.clf, st.session_state.vec
 
 # --- UI Header ---
 st.title("💬 Text Insight Studio")
-st.caption("Developed by **Lahari Reddy** | A professional-grade text analysis suite for sentiment, summarization, and visualization")
+st.caption("Developed by **Lahari Reddy** | Analyze sentiment, summarize text, and visualize insights beautifully ✨")
 
-# --- Input Section ---
-text_input = st.text_area("📝 Enter Text:", placeholder="Type or paste text to analyze...", height=200)
+# --- Input Area ---
+text_input = st.text_area("📝 Enter Text:", placeholder="Type or paste your text here...", height=180)
 uploaded = st.file_uploader("📄 Or upload a text file:", type=["txt"])
-if uploaded: text_input = uploaded.read().decode("utf-8", errors="ignore")
+if uploaded:
+    text_input = uploaded.read().decode("utf-8", errors="ignore")
 
-# --- Button Controls ---
+# --- Button Row ---
 st.markdown("---")
-col1, col2, col3, col4 = st.columns(4)
+cols = st.columns(4)
 choice = None
-with col1:
-    if st.button("🧠 Sentiment Analysis"): choice = "sentiment"
-with col2:
-    if st.button("✂️ Extractive Summary"): choice = "extractive"
-with col3:
-    if st.button("🪶 Abstractive Summary"): choice = "abstractive"
-with col4:
-    if st.button("☁️ Word Cloud"): choice = "wordcloud"
+buttons = [("🧠 Sentiment Analysis", "sentiment"),
+           ("✂️ Extractive Summary", "extractive"),
+           ("🪶 Abstractive Summary", "abstractive"),
+           ("☁️ Word Cloud", "wordcloud")]
+
+for (label, val), col in zip(buttons, cols):
+    with col:
+        if st.button(label):
+            choice = val
 
 st.markdown("---")
 
@@ -169,24 +183,18 @@ if text_input.strip():
         data, top = analyze_sentiment(text_input, vec, clf)
         st.success(f"Predicted Sentiment: **{top.upper()}**")
 
-        # --- Compact Bar Chart (Improved Design) ---
+        # Compact Bar Graph
         df_s = pd.DataFrame({"Sentiment": list(data.keys()), "Probability": list(data.values())})
         color_map = {'negative': '#EF5350', 'neutral': '#FFD54F', 'positive': '#66BB6A'}
-        fig, ax = plt.subplots(figsize=(5, 3))  # smaller, compact
-        bars = ax.bar(df_s["Sentiment"], df_s["Probability"],
-                      color=[color_map[s] for s in df_s["Sentiment"]],
-                      width=0.4, edgecolor='gray')
-
+        fig, ax = plt.subplots(figsize=(4.5, 2.5))  # smaller
+        ax.bar(df_s["Sentiment"], df_s["Probability"],
+               color=[color_map[s] for s in df_s["Sentiment"]],
+               width=0.35, edgecolor='gray')
         ax.set_ylim(0, 1.05)
-        ax.set_title("Sentiment Confidence Levels", fontsize=10, pad=10)
-        ax.set_xlabel("Sentiment", fontsize=8)
-        ax.set_ylabel("Probability", fontsize=8)
+        ax.set_title("Sentiment Confidence Levels", fontsize=10)
         ax.grid(axis='y', linestyle='--', alpha=0.4)
-
-        # Remove unnecessary borders for cleaner look
         for spine in ['top', 'right']:
             ax.spines[spine].set_visible(False)
-
         plt.tight_layout()
         st.pyplot(fig)
 
@@ -199,54 +207,50 @@ if text_input.strip():
         try:
             st.info(abstractive_summarize_text(text_input))
         except Exception as e:
-            st.error(f"Model Error: {e}")
+            st.error(f"Error: {e}")
 
     elif choice == "wordcloud":
         st.subheader("☁️ Word Cloud Visualization")
         wc_img = generate_wc(text_input)
-        st.image(wc_img, caption="Word Frequency Cloud", use_column_width=True)
+        st.image(wc_img, caption="Compact Word Cloud", use_column_width=False, width=400)
 
-    # --- PDF Download Section ---
+    # --- PDF Download ---
     if st.button("📥 Download Full Report (PDF)"):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         styles = getSampleStyleSheet()
         elements = [
-            Paragraph("<b>Text Insight Studio - Analysis Report</b>", styles["Title"]),
+            Paragraph("<b>Text Insight Studio - Compact Report</b>", styles["Title"]),
             Spacer(1, 12),
             Paragraph("Original Text:", styles["Heading2"]),
             Paragraph(text_input[:1000] + ("..." if len(text_input) > 1000 else ""), styles["Normal"]),
-            Spacer(1, 12)
+            Spacer(1, 10)
         ]
 
-        # Sentiment
         data, top = analyze_sentiment(text_input, vec, clf)
         elements.append(Paragraph("Predicted Sentiment:", styles["Heading2"]))
         elements.append(Paragraph(str(top).upper(), styles["Normal"]))
-        elements.append(Spacer(1, 12))
-
-        # Extractive summary
+        elements.append(Spacer(1, 8))
         elements.append(Paragraph("Extractive Summary:", styles["Heading2"]))
         elements.append(Paragraph(extractive_reduce(text_input), styles["Normal"]))
 
-        # Abstractive summary (optional)
         try:
-            elements.append(Spacer(1, 12))
+            elements.append(Spacer(1, 8))
             elements.append(Paragraph("Abstractive Summary:", styles["Heading2"]))
             elements.append(Paragraph(abstractive_summarize_text(text_input), styles["Normal"]))
         except:
             pass
 
-        # Word cloud
-        img_path = "wordcloud_temp.png"
+        img_path = "wordcloud_small.png"
         generate_wc(text_input).save(img_path)
-        elements.append(Spacer(1, 12))
-        elements.append(RLImage(img_path, width=5*inch, height=3*inch))
+        elements.append(Spacer(1, 8))
+        elements.append(RLImage(img_path, width=4*inch, height=2.5*inch))
 
         doc.build(elements)
-        st.download_button("⬇️ Save PDF Report", data=buffer.getvalue(),
-                           file_name="Text_Insight_Report.pdf",
+        st.download_button("⬇️ Save Compact PDF Report",
+                           data=buffer.getvalue(),
+                           file_name="Text_Insight_Compact_Report.pdf",
                            mime="application/pdf")
 
 else:
-    st.info("Enter text above or upload a file to start analysis.")
+    st.info("💡 Enter text or upload a file to start analyzing.")
